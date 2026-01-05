@@ -9,7 +9,8 @@ setup(
     install_requires=[
         "pandas",
         "numpy",
-        'scikit-learn'
+        'scikit-learn',
+        'torch',
     ],
     # *strongly* suggested for sharing
     version='1.0',

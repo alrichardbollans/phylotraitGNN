@@ -2,6 +2,7 @@ import networkx as nx
 import pandas as pd
 import torch_geometric
 from matplotlib import pyplot as plt
+from torch_geometric.datasets import Planetoid
 from torch_geometric.explain import Explanation
 from torch_geometric.utils import to_edge_index
 import pandas as pd
@@ -18,35 +19,53 @@ class DistanceMatrixDataset(Dataset):
 
     def __init__(self,
                  tree_distance_csv_path: str,
-                 feature_csv_path: str,
+                 feature_csv_path_with_missing_target: str,
+                 ground_truth_csv_path: str,
+                 target_name: str,
+                 binary_or_continuous: str,
                  threshold: Optional[float] = None,
                  k_nearest: Optional[int] = None,
-                 transform: Optional[Callable] = None,
-                 pre_transform: Optional[Callable] = None):
+                 transform: Optional[Callable] = None):
         """
         Args:
             tree_distance_csv_path: Path to CSV file with distance matrix. This is created in R with tree_distances = ape::cophenetic.phylo(out_tree) and written to a file with  write.csv.
-            feature_csv_path: Path to CSV file with node features. Columns should be feature names and rows should be node names.
+            feature_csv_path_with_missing_target: Path to CSV file with node features. Columns should be feature names and rows should be node names. The target column should be missing for test nodes.
+            ground_truth_csv_path: Path to CSV file with node features. Columns should be feature names and rows should be node names. Should include all values for training and test nodes.
+            target_name: Name of target column in feature CSV file.
+            binary_or_continuous: Target is binary or continuous.
             threshold: Distance threshold for creating edges (edges for distances <= threshold)
             k_nearest: Create edges to k-nearest neighbors per node
-            transform/pre_transform: PyTorch Geometric transforms
+            transform: PyTorch Geometric transforms
         """
         self.tree_distance_csv_path = tree_distance_csv_path
         self.threshold = threshold
         self.k_nearest = k_nearest
+
+        if threshold is not None and k_nearest is not None:
+            raise NotImplementedError("Only one of threshold or k_nearest can be set.")
+
+        self.binary_or_continuous = binary_or_continuous
 
         # Read the tree CSV file
         self.tree_distance_df = pd.read_csv(tree_distance_csv_path, index_col=0)
         self.node_names = self.tree_distance_df.index.tolist()
         self.dist_matrix = self.tree_distance_df.values
 
-        # Read the feature CSV file
-        self.feature_df = pd.read_csv(feature_csv_path, index_col=0)
-        self.features = self.feature_df.loc[self.node_names].values  # Align with node names
-        for node in self.feature_df.index:
-            assert node in self.node_names, f"Node {node} not found in distance matrix."
+        # Read the feature CSV file. It holds
+        self.feature_with_missing_target_df = pd.read_csv(feature_csv_path_with_missing_target, index_col=0)
+        self.ground_truth_df = pd.read_csv(ground_truth_csv_path, index_col=0)
 
-        super().__init__(transform=transform, pre_transform=pre_transform)
+        ## Do some checks
+        for node in self.feature_with_missing_target_df.index:
+            assert node in self.node_names, f"Node {node} not found in distance matrix."
+        pd.testing.assert_frame_equal(self.ground_truth_df.drop(columns=[target_name]),
+                                      self.feature_with_missing_target_df.drop(columns=[target_name]))
+        pd.testing.assert_frame_equal(self.ground_truth_df[~self.feature_with_missing_target_df[target_name].isna()],
+                                      self.feature_with_missing_target_df.dropna(subset=[target_name]), check_dtype=False)
+
+        self.target_name = target_name
+
+        super().__init__(transform=transform)
 
         # Load the data
         self.data = self._process()
@@ -96,9 +115,33 @@ class DistanceMatrixDataset(Dataset):
                 dtype=torch.float
             ).view(-1, 1)
 
+        # Create train/val/test masks frrom missing target values
+        y_with_missing_target_df = self.feature_with_missing_target_df[[self.target_name]]
+
+        train_mask = torch.tensor(np.where(y_with_missing_target_df[self.target_name].isna(), False, True), dtype=torch.bool)
+        test_mask = torch.tensor(np.invert(train_mask), dtype=torch.bool)
+
         # Create Data object
+        X_feature_df = self.ground_truth_df.drop(columns=[self.target_name])
+
+        X = X_feature_df.loc[self.node_names].values  # Align with node names
+        y_df = self.ground_truth_df[[self.target_name]]
+
+        y = y_df.loc[self.node_names][self.target_name].values  # Align with node names
+
+        if self.binary_or_continuous == 'continuous':
+            y_dtype = torch.float
+        elif self.binary_or_continuous == 'binary':
+            y_dtype = torch.int64
+
+        else:
+            raise ValueError(f"binary_or_continuous must be 'continuous' or 'binary', not {self.binary_or_continuous}")
+
         data = Data(
-            x=torch.tensor(self.features, dtype=torch.float),
+            x=torch.tensor(X, dtype=torch.float),
+            y=torch.tensor(y, dtype=y_dtype),
+            train_mask=train_mask,
+            test_mask=test_mask,
             edge_index=edge_index,
             edge_attr=edge_attr,
             num_nodes=num_nodes,
@@ -106,8 +149,8 @@ class DistanceMatrixDataset(Dataset):
             dist_matrix=torch.tensor(self.dist_matrix, dtype=torch.float)
         )
 
-        if self.pre_transform is not None:
-            data = self.pre_transform(data)
+        if self.transform is not None:
+            data = self.transform(data)
 
         return data
 
@@ -118,37 +161,38 @@ class DistanceMatrixDataset(Dataset):
         return self.data
 
 
-
 def main():
-
+    dataset = Planetoid(root='data/Planetoid', name='Cora')
+    planetoid_data = dataset[0]
     # Load the dataset
     dataset1 = DistanceMatrixDataset(
-        tree_distance_csv_path='my_data/tree_distances.csv',
-        feature_csv_path='my_data/mcar_values.csv',
+        tree_distance_csv_path='my_data/binary/tree_distances.csv',
+        feature_csv_path_with_missing_target='my_data/binary/mcar_values.csv',
+        ground_truth_csv_path='my_data/binary/ground_truth.csv',
+        target_name='trait_BM_trend_scaled',
+        binary_or_continuous='binary',
         k_nearest=50,  # Alternative: connect to 2 nearest neighbors
+        transform=torch_geometric.transforms.NormalizeFeatures()
+
     )
 
-    data1 = dataset1.data
-    g = torch_geometric.utils.to_networkx(data1, to_undirected=True)
-    nx.draw(g)
-    plt.show()
+    data1 = dataset1[0]
+    print(f'Number of features: {dataset1.num_features}')
+    print(f'Number of classes: {dataset1.num_classes}')
+    dataset1.print_summary()
+    # g = torch_geometric.utils.to_networkx(data1, to_undirected=True)
+    # nx.draw(g)
+    # plt.show()
 
-    # Explanation(data1, edge_index=data1.edge_index).visualize_graph(backend='networkx')
-    dataset2 = DistanceMatrixDataset(
-        tree_distance_csv_path='my_data/tree_distances.csv',
-        feature_csv_path='my_data/ground_truth.csv',
-        threshold=5.0,  # Create edges for distances <= 5.0
-        # k_nearest=2,  # Alternative: connect to 2 nearest neighbors
-    )
-
-    data2 = dataset2.data
-    for data in [data1, data2]:
+    for data in [data1]:
         print(f"\nDataset Info:")
         print(f"Number of nodes: {data.num_nodes}")
         print(f"Number of edges: {data.edge_index.shape[1]}")
         print(f"Node feature shape: {data.x.shape}")
         print(f"Edge attribute shape: {data.edge_attr.shape}")
         print(f"Node names: {data.node_names}")
+        print(f'Number of training nodes: {int(data.train_mask.sum())}')
+        print(f'Number of testing nodes: {int(data.test_mask.sum())}')
 
         # You can now use this like any PyG dataset
         print(f"\nEdge indices (first 5): {data.edge_index[:, :5]}")
