@@ -70,6 +70,9 @@ class DistanceMatrixDataset(Dataset):
         # Load the data
         self.data = self._process()
 
+        if self.binary_or_continuous == 'binary':
+            assert self.num_classes == 2
+
     def _process(self):
         """Convert distance matrix to PyG Data object."""
         num_nodes = len(self.node_names)
@@ -176,14 +179,13 @@ def main():
 
     )
 
-    data1 = dataset1[0]
     print(f'Number of features: {dataset1.num_features}')
     print(f'Number of classes: {dataset1.num_classes}')
     dataset1.print_summary()
     # g = torch_geometric.utils.to_networkx(data1, to_undirected=True)
     # nx.draw(g)
     # plt.show()
-
+    data1 = dataset1[0]
     for data in [data1]:
         print(f"\nDataset Info:")
         print(f"Number of nodes: {data.num_nodes}")
