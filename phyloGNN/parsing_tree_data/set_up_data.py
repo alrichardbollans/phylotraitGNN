@@ -2,8 +2,8 @@ import networkx as nx
 import pandas as pd
 import torch_geometric
 from matplotlib import pyplot as plt
-from torch_geometric.datasets import Planetoid
 from torch_geometric.explain import Explanation
+from torch_geometric.transforms import ToUndirected, FeaturePropagation
 from torch_geometric.utils import to_edge_index
 import pandas as pd
 import numpy as np
@@ -20,8 +20,28 @@ class GenericPhyloDataset(Dataset):
     def __init__(self, transform: Optional[Callable] = None):
         super().__init__(transform=transform)
 
+    @staticmethod
+    def transform_data(data, edge_attr=None):
+        # From Emanuele Rossi et al., ‘On the Unreasonable Effectiveness of Feature Propagation in Learning on Graphs with Missing Node Features’,
+        # arXiv:2111.12128, preprint, arXiv, 23 May 2022, https://doi.org/10.48550/arXiv.2111.12128.
+        # https://pytorch-geometric.readthedocs.io/en/stable/generated/torch_geometric.transforms.FeaturePropagation.html#torch_geometric.transforms.FeaturePropagation
+        missing_mask = torch.isnan(data.x)
+        FeaturePropagation_transform = FeaturePropagation(missing_mask=missing_mask)
+        if torch.any(missing_mask):
+            data = FeaturePropagation_transform(data)
+
+        # Feature propagation transform breaks with edge attributes, so add them back in before the undirected transform.
+        data.edge_attr = edge_attr
+        ToUndirected_transform = ToUndirected(reduce='mean')
+        data = ToUndirected_transform(data)
+        return data
+
     def checks(self):
         ## Do some checks
+        self.data.validate(raise_on_error=True)
+
+        assert self.data.is_undirected()
+
         for node in self.feature_with_missing_target_df.index:
             assert node in self.node_names, f"Node {node} not found in tree."
         pd.testing.assert_frame_equal(self.ground_truth_df.drop(columns=[self.target_name]),
@@ -32,7 +52,19 @@ class GenericPhyloDataset(Dataset):
             assert self.num_classes == 2
 
         # print(data.train_mask.sum(), data.test_mask.sum())
-        assert (self.data.train_mask & self.data.test_mask).sum()==0  # should be 0
+        assert (self.data.train_mask & self.data.test_mask).sum() == 0  # should be 0
+
+        # No train or test nodes should have missing target values
+        # Also check for the placeholder nan value
+        nan_value = torch.tensor(np.array([np.nan]), dtype=torch.int64).numpy()[0]
+
+        test_y = self.data.y[self.data.test_mask]
+        assert ~torch.any(torch.isnan(test_y))
+        assert ~torch.any(test_y == nan_value)
+
+        train_y = self.data.y[self.data.train_mask]
+        assert ~torch.any(torch.isnan(train_y))
+        assert ~torch.any(train_y == nan_value)
 
     def get_features_and_masks(self):
         # Create train/val/test masks from missing target values
@@ -74,8 +106,9 @@ class GenericPhyloDataset(Dataset):
         train_mask = torch.tensor(np.where(y_with_missing_target_df[self.target_name].isna(), False, True), dtype=torch.bool)
 
         if hasattr(self, 'nodes_that_arent_tips'):
-            test_mask = np.where((y_with_missing_target_df[self.target_name].isna() & ~y_with_missing_target_df.index.isin(NAN_node_target.index)),
-                                 True, False)
+            test_mask = torch.tensor(
+                np.where((y_with_missing_target_df[self.target_name].isna() & ~y_with_missing_target_df.index.isin(NAN_node_target.index)),
+                         True, False), dtype=torch.bool)
         else:
             test_mask = torch.tensor(np.invert(train_mask), dtype=torch.bool)
         if self.binary_or_continuous == 'continuous':
@@ -105,8 +138,7 @@ class DistanceMatrixDataset(GenericPhyloDataset):
                  target_name: str,
                  binary_or_continuous: str,
                  threshold: Optional[float] = None,
-                 k_nearest: Optional[int] = None,
-                 transform: Optional[Callable] = None):
+                 k_nearest: Optional[int] = None):
         """
         Args:
             tree_distance_csv_path: Path to CSV file with distance matrix. This is created in R with tree_distances = ape::cophenetic.phylo(out_tree) and written to a file with  write.csv.
@@ -116,7 +148,6 @@ class DistanceMatrixDataset(GenericPhyloDataset):
             binary_or_continuous: Target is binary or continuous.
             threshold: Distance threshold for creating edges (edges for distances <= threshold)
             k_nearest: Create edges to k-nearest neighbors per node
-            transform: PyTorch Geometric transforms which transform values stored in 'x'
         """
         self.tree_distance_csv_path = tree_distance_csv_path
         self.threshold = threshold
@@ -138,7 +169,7 @@ class DistanceMatrixDataset(GenericPhyloDataset):
 
         self.target_name = target_name
 
-        super().__init__(transform=transform)
+        super().__init__()
 
         # Load the data
         self.data = self._process()
@@ -197,15 +228,9 @@ class DistanceMatrixDataset(GenericPhyloDataset):
             train_mask=train_mask,
             test_mask=test_mask,
             edge_index=edge_index,
-            edge_attr=edge_attr,
-            # num_nodes=num_nodes,
-            # node_names=self.node_names,
-            # dist_matrix=torch.tensor(self.dist_matrix, dtype=torch.float)
+            # edge_attr=edge_attr
         )
-
-        if self.transform is not None:
-            raise NotImplementedError('This is setting everything to Nan here when some of the values are missing.')
-            data = self.transform(data)
+        data = self.transform_data(data, edge_attr=edge_attr)
 
         return data
 
@@ -218,8 +243,7 @@ class NewickDataset(GenericPhyloDataset):
                  feature_csv_path_with_missing_target: str,
                  ground_truth_csv_path: str,
                  target_name: str,
-                 binary_or_continuous: str,
-                 transform: Optional[Callable] = None):
+                 binary_or_continuous: str):
         """
         Args:
             newick_tree_path: Path to CSV file with newick tree.
@@ -245,7 +269,7 @@ class NewickDataset(GenericPhyloDataset):
         self.ground_truth_df = pd.read_csv(ground_truth_csv_path, index_col=0)
         self.target_name = target_name
 
-        super().__init__(transform=transform)
+        super().__init__()
 
         # Load the data
         self.data = self._process()
@@ -279,12 +303,9 @@ class NewickDataset(GenericPhyloDataset):
             train_mask=train_mask,
             test_mask=test_mask,
             edge_index=pyg_data.edge_index,
-            edge_attr=edge_attr
+            # edge_attr=edge_attr
         )
-
-        if self.transform is not None:
-            raise NotImplementedError('This is setting everything to Nan here when some of the values are missing.')
-            data = self.transform(data)
+        data = self.transform_data(data, edge_attr=edge_attr)
 
         return data
 
@@ -294,9 +315,9 @@ def main():
     # planetoid_data = dataset[0]
     # Load the dataset
     # dataset1 = DistanceMatrixDataset(
-    #     tree_distance_csv_path='my_data/binary/tree_distances.csv',
-    #     feature_csv_path_with_missing_target='my_data/binary/mcar_values.csv',
-    #     ground_truth_csv_path='my_data/binary/ground_truth.csv',
+    #     tree_distance_csv_path='unittest_data/binary/tree_distances.csv',
+    #     feature_csv_path_with_missing_target='unittest_data/binary/mcar_values.csv',
+    #     ground_truth_csv_path='unittest_data/binary/ground_truth.csv',
     #     target_name='trait_BM_trend_scaled',
     #     binary_or_continuous='binary',
     #     k_nearest=50,  # Alternative: connect to 2 nearest neighbors
@@ -305,12 +326,11 @@ def main():
     # )
 
     dataset1 = NewickDataset(
-        newick_tree_path='my_data/binary/tree.tre',
-        feature_csv_path_with_missing_target='my_data/binary/mcar_values.csv',
-        ground_truth_csv_path='my_data/binary/ground_truth.csv',
+        newick_tree_path='unittest_data/binary/tree.tre',
+        feature_csv_path_with_missing_target='unittest_data/binary/mcar_values.csv',
+        ground_truth_csv_path='unittest_data/binary/ground_truth.csv',
         target_name='trait_BM_trend_scaled',
         binary_or_continuous='binary',
-        # transform=torch_geometric.transforms.NormalizeFeatures()
 
     )
 

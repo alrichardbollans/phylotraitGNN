@@ -11,6 +11,7 @@ setup(
         "numpy",
         'scikit-learn',
         'torch',
+        'torch-geometric',
     ],
     # *strongly* suggested for sharing
     version='1.0',

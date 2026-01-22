@@ -4,6 +4,7 @@ import unittest
 import networkx as nx
 import numpy as np
 import pandas as pd
+import torch
 import torch_geometric
 from matplotlib import pyplot as plt
 
@@ -57,10 +58,26 @@ class TestDistanceMatrixDataset(unittest.TestCase):
         self.assertEqual(dataset.len(), 1)
         self.assertEqual(len(dataset.node_names), 3)
         self.assertIn("Node1", dataset.node_names)
+        self.assertIsInstance(dataset.data.y, torch.Tensor)
+        self.assertIs(dataset.data.y.dtype, torch.int64)
 
-        g = torch_geometric.utils.to_networkx(dataset[0], to_undirected=True)
+        g = torch_geometric.utils.to_networkx(dataset[0])
         nx.draw(g)
         plt.show()
+
+        dataset = DistanceMatrixDataset(
+            tree_distance_csv_path=self.tree_distance_csv_path,
+            feature_csv_path_with_missing_target=self.feature_csv_path,
+            ground_truth_csv_path=self.ground_truth_csv_path,
+            target_name="Target",
+            binary_or_continuous="continuous"
+        )
+
+        self.assertEqual(dataset.len(), 1)
+        self.assertEqual(len(dataset.node_names), 3)
+        self.assertIn("Node1", dataset.node_names)
+        self.assertIsInstance(dataset.data.y, torch.Tensor)
+        self.assertIs(dataset.data.y.dtype, torch.float)
 
     def test_dataset_process(self):
         dataset = DistanceMatrixDataset(
@@ -124,9 +141,14 @@ class TestDistanceMatrixDataset(unittest.TestCase):
             k_nearest=1
         )
 
+        g = torch_geometric.utils.to_networkx(dataset[0])
+        nx.draw(g)
+        plt.show()
+
         data = dataset.get(0)
         self.assertIsNotNone(data.edge_index)
-        self.assertEqual(data.edge_index.size(1),  3)  # Each node connects to 1 nearest node
+        self.assertEqual(data.edge_index.size(1),  4)  # Each node connects to 1 nearest node
+
 
 
 if __name__ == "__main__":
