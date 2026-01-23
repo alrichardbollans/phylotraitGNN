@@ -25,6 +25,9 @@ class GenericPhyloDataset(Dataset):
         # From Emanuele Rossi et al., ‘On the Unreasonable Effectiveness of Feature Propagation in Learning on Graphs with Missing Node Features’,
         # arXiv:2111.12128, preprint, arXiv, 23 May 2022, https://doi.org/10.48550/arXiv.2111.12128.
         # https://pytorch-geometric.readthedocs.io/en/stable/generated/torch_geometric.transforms.FeaturePropagation.html#torch_geometric.transforms.FeaturePropagation
+        # if data.x.shape[1] == 0:
+        #     data.x = torch.ones((data.num_nodes, 1))
+        # else:
         missing_mask = torch.isnan(data.x)
         FeaturePropagation_transform = FeaturePropagation(missing_mask=missing_mask)
         if torch.any(missing_mask):
@@ -73,10 +76,10 @@ class GenericPhyloDataset(Dataset):
         X_feature_df = self.ground_truth_df.drop(columns=[self.target_name])
 
         feature_names = X_feature_df.columns
-        try:
-            assert len(feature_names) > 0
-        except AssertionError:
-            raise ValueError("Input data tables must have at least one feature (non target) column.")
+        # try:
+        #     assert len(feature_names) > 0
+        # except AssertionError:
+        #     raise ValueError("Input data tables must have at least one feature (non target) column.")
 
         pd.testing.assert_frame_equal(X_feature_df, self.ground_truth_df[feature_names])
 

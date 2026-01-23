@@ -1,7 +1,7 @@
 import torch
 from sklearn.metrics import brier_score_loss
 from torch_geometric.explain import Explainer, GNNExplainer
-from torch_geometric.nn import GCNConv
+from torch_geometric.nn import GCNConv, GATConv, GATv2Conv
 import torch.nn.functional as F
 from torch_geometric.transforms import FeaturePropagation
 
@@ -13,20 +13,20 @@ class GCN(torch.nn.Module):
     def __init__(self, dataset, hidden_channels):
         super().__init__()
         torch.manual_seed(1234567)
-        self.conv1 = GCNConv(dataset.num_features, hidden_channels)
-        self.conv2 = GCNConv(hidden_channels, dataset.num_classes)
+        self.conv1 = GATv2Conv(dataset.num_features, hidden_channels, edge_dim=1, add_self_loops=False)
+        self.conv2 = GATv2Conv(hidden_channels, dataset.num_classes, edge_dim=1, add_self_loops=False)
 
-    def forward(self, x, edge_index):
-        x = self.conv1(x, edge_index)
+    def forward(self, x, edge_index, edge_attr):
+        x = self.conv1(x, edge_index, edge_attr=edge_attr)
         x = x.relu()
         x = F.dropout(x, p=0.5, training=self.training)
-        x = self.conv2(x, edge_index)
+        x = self.conv2(x, edge_index, edge_attr=edge_attr)
         return x
 
     def train_step(self, data, optimizer, loss_function):
         self.train()
         optimizer.zero_grad()  # Clear gradients.
-        out_ = self(data.x, data.edge_index)  # Perform a single forward pass.
+        out_ = self(data.x, data.edge_index, data.edge_attr)  # Perform a single forward pass.
         loss_ = loss_function(out_[data.train_mask], data.y[data.train_mask])  # Compute the loss solely based on the training nodes.
         loss_.backward()  # Derive gradients.
         optimizer.step()  # Update parameters based on gradients.
@@ -34,7 +34,7 @@ class GCN(torch.nn.Module):
 
     def test(self, data):
         self.eval()
-        out_ = self(data.x, data.edge_index)
+        out_ = self(data.x, data.edge_index, edge_attr=data.edge_attr)
         test_predictions = out_[data.test_mask]
         probs = F.softmax(test_predictions, dim=1)  # Convert logits to probabilities.
         pred_proba = probs[:, 1]  # Probability for class 1
@@ -42,7 +42,6 @@ class GCN(torch.nn.Module):
         pred = probs.argmax(dim=1)  # Use the class with highest probability.
         test_correct = pred == data.y[data.test_mask]  # Check against ground-truth labels.
         test_acc = int(test_correct.sum()) / int(data.test_mask.sum())  # Derive ratio of correct predictions.
-        y_test = data.y[data.test_mask].detach().cpu().numpy()
         # To use brier_score_loss:
         b_score = brier_score_loss(
             data.y[data.test_mask].detach().cpu().numpy(),
@@ -53,24 +52,34 @@ class GCN(torch.nn.Module):
 
 
 def main():
+    dataset = DistanceMatrixDataset(
+        tree_distance_csv_path='../parsing_tree_data/unittest_data/binary/tree_distances.csv',
+        feature_csv_path_with_missing_target='../parsing_tree_data/unittest_data/binary/mcar_values.csv',
+        ground_truth_csv_path='../parsing_tree_data/unittest_data/binary/ground_truth.csv',
+        target_name='trait_BM_trend_scaled',
+        binary_or_continuous='binary',
+        k_nearest=50,  # Alternative: connect to 2 nearest neighbors
+
+    )
+
     # dataset = DistanceMatrixDataset(
-    #     tree_distance_csv_path='../parsing_tree_data/unittest_data/binary/tree_distances.csv',
-    #     feature_csv_path_with_missing_target='../parsing_tree_data/unittest_data/binary/mcar_values.csv',
-    #     ground_truth_csv_path='../parsing_tree_data/unittest_data/binary/ground_truth.csv',
-    #     target_name='trait_BM_trend_scaled',
+    #     tree_distance_csv_path='../parsing_tree_data/unittest_data/binary_no_features/tree_distances.csv',
+    #     feature_csv_path_with_missing_target='../parsing_tree_data/unittest_data/binary_no_features/mcar_values.csv',
+    #     ground_truth_csv_path='../parsing_tree_data/unittest_data/binary_no_features/ground_truth.csv',
+    #     target_name='trait_ARD',
     #     binary_or_continuous='binary',
     #     k_nearest=50,  # Alternative: connect to 2 nearest neighbors
     #
     # )
 
-    dataset = NewickDataset(
-        newick_tree_path='../parsing_tree_data/unittest_data/binary/tree.tre',
-        feature_csv_path_with_missing_target='../parsing_tree_data/unittest_data/binary/mcar_values.csv',
-        ground_truth_csv_path='../parsing_tree_data/unittest_data/binary/ground_truth.csv',
-        target_name='trait_BM_trend_scaled',
-        binary_or_continuous='binary',
-
-    )
+    # dataset = NewickDataset(
+    #     newick_tree_path='../parsing_tree_data/unittest_data/binary_no_features/tree.tre',
+    #     feature_csv_path_with_missing_target='../parsing_tree_data/unittest_data/binary_no_features/mcar_values.csv',
+    #     ground_truth_csv_path='../parsing_tree_data/unittest_data/binary_no_features/ground_truth.csv',
+    #     target_name='trait_ARD',
+    #     binary_or_continuous='binary',
+    #
+    # )
 
     model = GCN(dataset=dataset, hidden_channels=16)
     print(model)

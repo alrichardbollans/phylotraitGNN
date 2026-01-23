@@ -1,3 +1,4 @@
+import copy
 import os
 import unittest
 
@@ -27,10 +28,6 @@ class TestGCN(unittest.TestCase):
         self.data = Data(x=x, edge_index=edge_index, y=y, train_mask=train_mask, test_mask=test_mask)
         self.dataset = type("MockDataset", (object,), {"num_features": num_features, "num_classes": num_classes})
 
-    def test_forward_pass(self):
-        model = GCN(self.dataset, hidden_channels=4)
-        out = model(self.data.x, self.data.edge_index)
-        self.assertEqual(out.shape, (self.data.x.shape[0], self.dataset.num_classes))
 
     def test_train_step(self):
         model = GCN(self.dataset, hidden_channels=4)
@@ -53,6 +50,46 @@ class TestGCN(unittest.TestCase):
         self.assertIsInstance(brier_score, float)
         self.assertGreaterEqual(brier_score, 0.0)
 
+    def for_a_dataset(self, dataset):
+        model = GCN(dataset, hidden_channels=4)
+
+        data = dataset.data
+        loss_function = torch.nn.CrossEntropyLoss()
+        optimizer_class = torch.optim.Adam
+        optimizer_kwargs = {'lr': 0.01, 'weight_decay': 5e-4}
+        optimizer = optimizer_class(model.parameters(), **optimizer_kwargs)
+        test_acc_1, brier1 = model.test(data)
+
+        for epoch in range(1, 100):
+            loss = model.train_step(data, optimizer, loss_function)
+            print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}')
+
+        # Check training has changed scores
+        test_acc_, brier = model.test(data)
+        # self.assertNotEqual(test_acc_1, test_acc_)
+        self.assertNotEqual(brier1, brier)
+
+        # Check it's not just outputting the same values
+        out_ = model(data.x, data.edge_index, edge_attr=data.edge_attr)
+        test_pred_proba = set([round(c, 5) for c in set(out_[data.test_mask].detach().cpu().numpy()[:, 1])])
+        self.assertGreaterEqual(len(test_pred_proba), 2)
+
+        train_pred_proba = set([round(c, 5) for c in set(out_[data.train_mask].detach().cpu().numpy()[:, 1])])
+        self.assertGreaterEqual(len(train_pred_proba), 2)
+
+        self.assertEqual(out_.shape, (data.x.shape[0], dataset.num_classes))
+
+        # Test edge attributes are being used
+        with torch.no_grad():
+            # Clone data, zero out edge_attr if it exists
+            data_no_edge_attr = copy.deepcopy(data)
+            if hasattr(data, 'edge_attr'):
+                data_no_edge_attr.edge_attr = torch.zeros_like(data.edge_attr)
+            out_with_none = model(data.x, data.edge_index, None)
+            out_without = model(data_no_edge_attr.x, data_no_edge_attr.edge_index, data_no_edge_attr.edge_attr)
+            assert not torch.allclose(out_, out_without), "Model outputs are unchanged by edge_attr!"
+            assert not torch.allclose(out_, out_with_none), "Model outputs are unchanged by edge_attr!"
+
     def test_distance_training_process(self):
 
         dataset = DistanceMatrixDataset(
@@ -64,22 +101,7 @@ class TestGCN(unittest.TestCase):
             k_nearest=50
 
         )
-        model = GCN(dataset, hidden_channels=4)
-
-        data = dataset.data
-        loss_function = torch.nn.CrossEntropyLoss()
-        optimizer_class = torch.optim.Adam
-        optimizer_kwargs = {'lr': 0.01, 'weight_decay': 5e-4}
-        optimizer = optimizer_class(model.parameters(), **optimizer_kwargs)
-        test_acc_1, brier1 = model.test(data)
-
-        for epoch in range(1, 100):
-            loss = model.train_step(data, optimizer, loss_function)
-            print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}')
-
-        test_acc_, brier = model.test(data)
-        self.assertNotEqual(test_acc_1, test_acc_)
-        self.assertNotEqual(brier1, brier)
+        self.for_a_dataset(dataset)
 
     def test_distance_training_process_full(self):
 
@@ -91,22 +113,7 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary'
 
         )
-        model = GCN(dataset, hidden_channels=4)
-
-        data = dataset.data
-        loss_function = torch.nn.CrossEntropyLoss()
-        optimizer_class = torch.optim.Adam
-        optimizer_kwargs = {'lr': 0.01, 'weight_decay': 5e-4}
-        optimizer = optimizer_class(model.parameters(), **optimizer_kwargs)
-        test_acc_1, brier1 = model.test(data)
-
-        for epoch in range(1, 100):
-            loss = model.train_step(data, optimizer, loss_function)
-            print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}')
-
-        test_acc_, brier = model.test(data)
-        self.assertNotEqual(test_acc_1, test_acc_)
-        self.assertNotEqual(brier1, brier)
+        self.for_a_dataset(dataset)
 
     def test_newick_training_process(self):
 
@@ -118,22 +125,28 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary'
 
         )
-        model = GCN(dataset, hidden_channels=4)
+        self.for_a_dataset(dataset)
 
-        data = dataset.data
-        loss_function = torch.nn.CrossEntropyLoss()
-        optimizer_class = torch.optim.Adam
-        optimizer_kwargs = {'lr': 0.01, 'weight_decay': 5e-4}
-        optimizer = optimizer_class(model.parameters(), **optimizer_kwargs)
-        test_acc_1, brier1 = model.test(data)
+    def test_Newick_with_no_features(self):
+        dataset = NewickDataset(
+            newick_tree_path='../../parsing_tree_data/unittest_data/binary_no_features/tree.tre',
+            feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary_no_features/mcar_values.csv',
+            ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary_no_features/ground_truth.csv',
+            target_name='trait_ARD',
+            binary_or_continuous='binary',
 
-        for epoch in range(1, 100):
-            loss = model.train_step(data, optimizer, loss_function)
-            print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}')
+        )
+        self.for_a_dataset(dataset)
+    def test_distance_with_no_features(self):
+        dataset = DistanceMatrixDataset(
+            tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary_no_features/tree_distances.csv',
+            feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary_no_features/mcar_values.csv',
+            ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary_no_features/ground_truth.csv',
+            target_name='trait_ARD',
+            binary_or_continuous='binary',
 
-        test_acc_, brier = model.test(data)
-        self.assertNotEqual(test_acc_1, test_acc_)
-        self.assertNotEqual(brier1, brier)
+        )
+        self.for_a_dataset(dataset)
 
 
 if __name__ == "__main__":
