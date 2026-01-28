@@ -1,10 +1,10 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='phyloGNN',
+    name='phylotraitGNN',
     description='A package for running GNNs on phylogenetic trees',
     license='Attribution-NonCommercial-ShareAlike 4.0 International',
-    packages=find_packages(include=['phyloGNN']),
+    packages=find_packages(include=['phylotraitGNN']),
 
     install_requires=[
         "pandas",

@@ -5,8 +5,8 @@ from torch_geometric.nn import GCNConv, GATConv, GATv2Conv
 import torch.nn.functional as F
 from torch_geometric.transforms import FeaturePropagation
 
-from phyloGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset
-from phyloGNN.parsing_tree_data.visualising import explaining
+from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset
+from phylotraitGNN.parsing_tree_data.visualising import explaining
 
 
 class GCN(torch.nn.Module):

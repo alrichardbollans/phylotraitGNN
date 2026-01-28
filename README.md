@@ -1,4 +1,13 @@
-#  Phylogenetic Graph Neural Networks
+# Phylogenetic Graph Neural Networks for Trait Predictions
+
+This package provides methods for reading phylogenetic tree data and applying Graph Neural Networks to predict properties of taxa.
+
+## Installation
+
+With pip, run:
+
+`pip install git+https://github.com/alrichardbollans/phylotraitGNN.git`
+
 ## Licence
 
 This work is licensed under a

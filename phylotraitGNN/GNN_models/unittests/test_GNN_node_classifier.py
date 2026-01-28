@@ -4,10 +4,10 @@ import unittest
 
 import torch
 import torch.nn.functional as F
-from phyloGNN.GNN_models.GNN_node_classifier import GCN
+from phylotraitGNN.GNN_models.GNN_node_classifier import GCN
 from torch_geometric.data import Data
 
-from phyloGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset
+from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset
 
 
 class TestGCN(unittest.TestCase):
