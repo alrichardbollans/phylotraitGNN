@@ -5,7 +5,10 @@ from torch_geometric.nn import GCNConv, GATConv, GATv2Conv, LabelPropagation
 import torch.nn.functional as F
 from torch_geometric.transforms import FeaturePropagation
 
-from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset
+from phylotraitGNN.GNN_models import propagate_labels, test_binary
+from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset, GenericPhyloDataset
+
+
 # from phylotraitGNN.parsing_tree_data.visualising import explaining
 
 
@@ -13,8 +16,11 @@ class GCN(torch.nn.Module):
     def __init__(self, dataset, hidden_channels):
         super().__init__()
         torch.manual_seed(1234567)
-        self.conv1 = GATv2Conv(dataset.num_features, hidden_channels, edge_dim=1, add_self_loops=False)
-        self.conv2 = GATv2Conv(hidden_channels, dataset.num_classes, edge_dim=1, add_self_loops=False)
+        # Shaked Brody et al., ‘How Attentive Are Graph Attention Networks?’,
+        # arXiv:2105.14491, preprint, arXiv, 31 January 2022, https://doi.org/10.48550/arXiv.2105.14491.
+        # Note this adds self loops by default, the attention function applied to neighbours then includes the current node.
+        self.conv1 = GATv2Conv(dataset.num_features, hidden_channels, edge_dim=1)
+        self.conv2 = GATv2Conv(hidden_channels, dataset.num_classes, edge_dim=1)
 
     def forward(self, x, edge_index, edge_attr):
         x = self.conv1(x, edge_index, edge_attr=edge_attr)
@@ -35,21 +41,19 @@ class GCN(torch.nn.Module):
     def test(self, data):
         self.eval()
         out_ = self(data.x, data.edge_index, edge_attr=data.edge_attr)
-        test_predictions = out_[data.test_mask]
-        probs = F.softmax(test_predictions, dim=1)  # Convert logits to probabilities.
-        pred_proba = probs[:, 1]  # Probability for class 1
-
-        pred = probs.argmax(dim=1)  # Use the class with highest probability.
-        test_correct = pred == data.y[data.test_mask]  # Check against ground-truth labels.
-        test_acc = int(test_correct.sum()) / int(data.test_mask.sum())  # Derive ratio of correct predictions.
-        # To use brier_score_loss:
-        b_score = brier_score_loss(
-            data.y[data.test_mask].detach().cpu().numpy(),
-            pred_proba.detach().cpu().numpy()
-        )
+        test_acc, b_score = test_binary(out_, data)
 
         return test_acc, b_score
 
+def train_gcn_model(model, data):
+    loss_function = torch.nn.CrossEntropyLoss()
+    optimizer_class = torch.optim.Adam
+    optimizer_kwargs = {'lr': 0.01, 'weight_decay': 5e-4}
+    optimizer = optimizer_class(model.parameters(), **optimizer_kwargs)
+
+    for epoch in range(1, 100):
+        loss = model.train_step(data, optimizer, loss_function)
+        print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}')
 
 def main():
     dataset = DistanceMatrixDataset(
@@ -82,9 +86,7 @@ def main():
     # )
     data = dataset.data
 
-    model = LabelPropagation(num_layers=3, alpha=0.9)
-    out = model(data.y, data.edge_index, mask=data.train_mask, edge_weight=data.edge_attr)
-    print(out)
+    propagate_labels(dataset)
     # model = GCN(dataset=dataset, hidden_channels=16)
     # print(model)
     #

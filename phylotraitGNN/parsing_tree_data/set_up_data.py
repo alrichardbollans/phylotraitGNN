@@ -3,6 +3,7 @@ import pandas as pd
 import torch_geometric
 from matplotlib import pyplot as plt
 from torch_geometric.explain import Explanation
+from torch_geometric.nn.conv.gcn_conv import gcn_norm
 from torch_geometric.transforms import ToUndirected, FeaturePropagation
 from torch_geometric.utils import to_edge_index
 import pandas as pd
@@ -14,7 +15,7 @@ from typing import Optional, Callable
 import scipy.sparse as sp
 from torch_geometric.utils import from_networkx
 from Bio import Phylo
-
+from torch_geometric.utils import softmax
 
 class GenericPhyloDataset(Dataset):
     def __init__(self, transform: Optional[Callable] = None):
@@ -34,6 +35,18 @@ class GenericPhyloDataset(Dataset):
             data = FeaturePropagation_transform(data)
 
         # Feature propagation transform breaks with edge attributes, so add them back in before the undirected transform.
+
+        # Rescales them so that the elements of the n-dimensional output Tensor lie in the range [0,1] and sum to 1.
+        # This is a fix for the label propagation process, which clamps values in [0,1]
+        edge_weight = softmax(edge_attr, data.edge_index[0])
+        # min_w = edge_attr.min()
+        # max_w = edge_attr.max()
+        # edge_weight = (edge_attr - min_w) / (max_w - min_w + 1e-9)
+
+        # edge_index, edge_weight = gcn_norm(data.edge_index, edge_weight=edge_attr, num_nodes=edge_attr.size(0),
+        #                                    add_self_loops=False)
+
+
         data.edge_attr = edge_attr
         ToUndirected_transform = ToUndirected(reduce='mean')
         data = ToUndirected_transform(data)
@@ -85,35 +98,43 @@ class GenericPhyloDataset(Dataset):
 
         y_df = self.ground_truth_df[[self.target_name]]
 
+        node_target_df = pd.DataFrame()
         if hasattr(self, 'nodes_that_arent_tips'):
-            ## When there are nodes that arent tips, these have no feature values and so need giving np.nan and also including in both masks as False.
+            ## When there are nodes that arent tips, these have no feature values.
+            ## For features, give them a nan value. These will be filled in later by feature propagation.
+
             rows, cols = X_feature_df.shape
             NAN_node_features = pd.DataFrame([[np.nan] * cols] * (len(self.nodes_that_arent_tips)), index=self.nodes_that_arent_tips)
             NAN_node_features.index.name = 'accepted_species'
             NAN_node_features.columns = feature_names
             X_feature_df = pd.concat([X_feature_df, NAN_node_features], axis=0)
 
-            NAN_node_target = pd.DataFrame([[np.nan]] * (len(self.nodes_that_arent_tips)), index=self.nodes_that_arent_tips,
-                                           columns=[self.target_name])
-            NAN_node_target.index.name = 'accepted_species'
-            y_df = pd.concat([y_df, NAN_node_target], axis=0)
+            ## For target, Give these the mode training feature value.
+            ## The actual value shouldn't really matter as masks are used to exclude these nodes from training and testing.
+            ## and also include in both masks as False.? Or in train mask?
 
-            y_with_missing_target_df = pd.concat([y_with_missing_target_df, NAN_node_target], axis=0)
+            mode_training_value = y_with_missing_target_df[self.target_name].dropna().mode()[0]
+            node_target_df = pd.DataFrame([[mode_training_value]] * (len(self.nodes_that_arent_tips)), index=self.nodes_that_arent_tips,
+                                          columns=[self.target_name])
+            node_target_df.index.name = 'accepted_species'
+            y_df = pd.concat([y_df, node_target_df], axis=0)
+
+            y_with_missing_target_df = pd.concat([y_with_missing_target_df, node_target_df], axis=0)
 
         # Make sure all nodes are present in both feature and target dataframes, and  dataframes have same order
+        # Both X and y are sorted by self.node_names
         X = X_feature_df.loc[self.node_names].values  # Align with node names
 
         y = y_df.loc[self.node_names][self.target_name].values  # Align with node names
 
         y_with_missing_target_df = y_with_missing_target_df.loc[self.node_names]  # Align with node names
-        train_mask = torch.tensor(np.where(y_with_missing_target_df[self.target_name].isna(), False, True), dtype=torch.bool)
 
-        if hasattr(self, 'nodes_that_arent_tips'):
-            test_mask = torch.tensor(
-                np.where((y_with_missing_target_df[self.target_name].isna() & ~y_with_missing_target_df.index.isin(NAN_node_target.index)),
-                         True, False), dtype=torch.bool)
-        else:
-            test_mask = torch.tensor(np.invert(train_mask), dtype=torch.bool)
+        train_mask = torch.tensor(
+            np.where((y_with_missing_target_df[self.target_name].isna() | y_with_missing_target_df.index.isin(node_target_df.index)),
+                     False, True), dtype=torch.bool)
+        test_mask = torch.tensor(
+            np.where((~y_with_missing_target_df[self.target_name].isna() | y_with_missing_target_df.index.isin(node_target_df.index)),
+                     False, True), dtype=torch.bool)
         if self.binary_or_continuous == 'continuous':
             y_dtype = torch.float
         elif self.binary_or_continuous == 'binary':
@@ -231,7 +252,7 @@ class DistanceMatrixDataset(GenericPhyloDataset):
             train_mask=train_mask,
             test_mask=test_mask,
             edge_index=edge_index,
-            # edge_attr=edge_attr
+            # edge_attr=edge_attr # Feature propagation transform breaks with edge attributes, so add them back in before the undirected transform.
         )
         data = self.transform_data(data, edge_attr=edge_attr)
 
@@ -266,6 +287,8 @@ class NewickDataset(GenericPhyloDataset):
         # Can set this in R with `paste("Node",1L:tree$Nnode, sep='_') -> tree$node.label`
         self.node_names = list(self.networkx_tree.nodes)
         self.nodes_that_arent_tips = [n for n in self.node_names if 'Node_' in n]
+        if len(self.nodes_that_arent_tips) == 0:
+            raise ValueError("No nodes found in tree that aren't tips. Nodes should be named 'Node_x' where x is the node number.")
 
         # Read the feature CSV file. It holds
         self.feature_with_missing_target_df = pd.read_csv(feature_csv_path_with_missing_target, index_col=0)
@@ -306,7 +329,7 @@ class NewickDataset(GenericPhyloDataset):
             train_mask=train_mask,
             test_mask=test_mask,
             edge_index=pyg_data.edge_index,
-            # edge_attr=edge_attr
+            # edge_attr=edge_attr # Feature propagation transform breaks with edge attributes, so add them back in before the undirected transform.
         )
         data = self.transform_data(data, edge_attr=edge_attr)
 
