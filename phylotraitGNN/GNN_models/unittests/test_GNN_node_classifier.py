@@ -28,7 +28,6 @@ class TestGCN(unittest.TestCase):
         self.data = Data(x=x, edge_index=edge_index, y=y, train_mask=train_mask, test_mask=test_mask)
         self.dataset = type("MockDataset", (object,), {"num_features": num_features, "num_classes": num_classes})
 
-
     def test_train_step(self):
         model = GCN(self.dataset, hidden_channels=4)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
@@ -50,8 +49,7 @@ class TestGCN(unittest.TestCase):
         self.assertIsInstance(brier_score, float)
         self.assertGreaterEqual(brier_score, 0.0)
 
-    def for_a_dataset(self, dataset):
-        model = GCN(dataset, hidden_channels=4)
+    def for_a_dataset_and_model(self, dataset, model):
 
         data = dataset.data
         loss_function = torch.nn.CrossEntropyLoss()
@@ -101,7 +99,9 @@ class TestGCN(unittest.TestCase):
             k_nearest=50
 
         )
-        self.for_a_dataset(dataset)
+        model = GCN(dataset, hidden_channels=4)
+
+        self.for_a_dataset_and_model(dataset, model)
 
     def test_distance_training_process_full(self):
 
@@ -113,7 +113,9 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary'
 
         )
-        self.for_a_dataset(dataset)
+        model = GCN(dataset, hidden_channels=4)
+
+        self.for_a_dataset_and_model(dataset, model)
 
     def test_newick_training_process(self):
 
@@ -125,7 +127,9 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary'
 
         )
-        self.for_a_dataset(dataset)
+        model = GCN(dataset, hidden_channels=4)
+
+        self.for_a_dataset_and_model(dataset, model)
 
     def test_Newick_with_no_features(self):
         dataset = NewickDataset(
@@ -136,7 +140,10 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary',
 
         )
-        self.for_a_dataset(dataset)
+        model = GCN(dataset, hidden_channels=4)
+
+        self.for_a_dataset_and_model(dataset, model)
+
     def test_distance_with_no_features(self):
         dataset = DistanceMatrixDataset(
             tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary_no_features/tree_distances.csv',
@@ -146,7 +153,9 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary',
 
         )
-        self.for_a_dataset(dataset)
+        model = GCN(dataset, hidden_channels=4)
+
+        self.for_a_dataset_and_model(dataset, model)
 
 
 if __name__ == "__main__":

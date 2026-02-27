@@ -1,12 +1,12 @@
 import torch
 from sklearn.metrics import brier_score_loss
 from torch_geometric.explain import Explainer, GNNExplainer
-from torch_geometric.nn import GCNConv, GATConv, GATv2Conv
+from torch_geometric.nn import GCNConv, GATConv, GATv2Conv, LabelPropagation
 import torch.nn.functional as F
 from torch_geometric.transforms import FeaturePropagation
 
 from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset
-from phylotraitGNN.parsing_tree_data.visualising import explaining
+# from phylotraitGNN.parsing_tree_data.visualising import explaining
 
 
 class GCN(torch.nn.Module):
@@ -80,48 +80,51 @@ def main():
     #     binary_or_continuous='binary',
     #
     # )
-
-    model = GCN(dataset=dataset, hidden_channels=16)
-    print(model)
-
     data = dataset.data
 
-    missing_mask = torch.isnan(data.x)
-    assert data.x.ndim == 2
-    assert data.edge_index.ndim == 2
-    assert missing_mask.ndim == 2
-    print("data.x shape:", data.x.shape)
-    print("missing_mask shape:", missing_mask.shape)
-
-    print(data.x[:10])  # Print first 5 rows of features
-    print(data.y[:10])
-
-    print(data.train_mask.sum(), data.test_mask.sum())
-    print((data.train_mask & data.test_mask).sum())  # should be 0
-
-    print(torch.unique(data.y))
-    print(data.y.dtype)
-
-    model = GCN(dataset=dataset, hidden_channels=16)
-
-    ## Variable for the USER
-    binary_or_continuous = 'binary'
-    loss_function = torch.nn.CrossEntropyLoss()
-    optimizer_class = torch.optim.Adam
-    optimizer_kwargs = {'lr': 0.01, 'weight_decay': 5e-4}
-    optimizer = optimizer_class(model.parameters(), **optimizer_kwargs)
-
-    test_acc_, brier = model.test(data)
-    print(f'Test Accuracy: {test_acc_:.4f}')
-    print(f'Test brier: {brier:.4f}')
-
-    for epoch in range(1, 1001):
-        loss = model.train_step(data, optimizer, loss_function)
-        print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}')
-
-    test_acc_, brier = model.test(data)
-    print(f'Test Accuracy: {test_acc_:.4f}')
-    print(f'Test brier: {brier:.4f}')
+    model = LabelPropagation(num_layers=3, alpha=0.9)
+    out = model(data.y, data.edge_index, mask=data.train_mask, edge_weight=data.edge_attr)
+    print(out)
+    # model = GCN(dataset=dataset, hidden_channels=16)
+    # print(model)
+    #
+    #
+    # missing_mask = torch.isnan(data.x)
+    # assert data.x.ndim == 2
+    # assert data.edge_index.ndim == 2
+    # assert missing_mask.ndim == 2
+    # print("data.x shape:", data.x.shape)
+    # print("missing_mask shape:", missing_mask.shape)
+    #
+    # print(data.x[:10])  # Print first 5 rows of features
+    # print(data.y[:10])
+    #
+    # print(data.train_mask.sum(), data.test_mask.sum())
+    # print((data.train_mask & data.test_mask).sum())  # should be 0
+    #
+    # print(torch.unique(data.y))
+    # print(data.y.dtype)
+    #
+    # model = GCN(dataset=dataset, hidden_channels=16)
+    #
+    # ## Variable for the USER
+    # binary_or_continuous = 'binary'
+    # loss_function = torch.nn.CrossEntropyLoss()
+    # optimizer_class = torch.optim.Adam
+    # optimizer_kwargs = {'lr': 0.01, 'weight_decay': 5e-4}
+    # optimizer = optimizer_class(model.parameters(), **optimizer_kwargs)
+    #
+    # test_acc_, brier = model.test(data)
+    # print(f'Test Accuracy: {test_acc_:.4f}')
+    # print(f'Test brier: {brier:.4f}')
+    #
+    # for epoch in range(1, 1001):
+    #     loss = model.train_step(data, optimizer, loss_function)
+    #     print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}')
+    #
+    # test_acc_, brier = model.test(data)
+    # print(f'Test Accuracy: {test_acc_:.4f}')
+    # print(f'Test brier: {brier:.4f}')
 
     # explaining(model, data)
 
