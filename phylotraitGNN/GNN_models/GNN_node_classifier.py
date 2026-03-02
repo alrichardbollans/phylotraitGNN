@@ -32,7 +32,7 @@ class GCN(torch.nn.Module):
     def train_step(self, data, optimizer, loss_function):
         self.train()
         optimizer.zero_grad()  # Clear gradients.
-        out_ = self(data.x, data.edge_index, data.edge_attr)  # Perform a single forward pass.
+        out_ = self(data.x, data.edge_index, data.edge_weight)  # Perform a single forward pass.
         loss_ = loss_function(out_[data.train_mask], data.y[data.train_mask])  # Compute the loss solely based on the training nodes.
         loss_.backward()  # Derive gradients.
         optimizer.step()  # Update parameters based on gradients.
@@ -40,7 +40,7 @@ class GCN(torch.nn.Module):
 
     def test(self, data):
         self.eval()
-        out_ = self(data.x, data.edge_index, edge_attr=data.edge_attr)
+        out_ = self(data.x, data.edge_index, edge_attr=data.edge_weight)
         test_acc, b_score = test_binary(out_, data)
 
         return test_acc, b_score

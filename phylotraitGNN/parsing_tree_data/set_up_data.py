@@ -1,28 +1,21 @@
-import networkx as nx
-import pandas as pd
-import torch_geometric
-from matplotlib import pyplot as plt
-from torch_geometric.explain import Explanation
-from torch_geometric.nn.conv.gcn_conv import gcn_norm
-from torch_geometric.transforms import ToUndirected, FeaturePropagation
-from torch_geometric.utils import to_edge_index
-import pandas as pd
-import numpy as np
-import torch
-from torch_geometric.data import Data, Dataset
-import os
 from typing import Optional, Callable
-import scipy.sparse as sp
-from torch_geometric.utils import from_networkx
+
+import networkx as nx
+import numpy as np
+import pandas as pd
+import torch
 from Bio import Phylo
-from torch_geometric.utils import softmax
+from torch_geometric.data import Data, Dataset
+from torch_geometric.transforms import ToUndirected, FeaturePropagation, AddSelfLoops
+from torch_geometric.utils import from_networkx
+
 
 class GenericPhyloDataset(Dataset):
     def __init__(self, transform: Optional[Callable] = None):
         super().__init__(transform=transform)
 
     @staticmethod
-    def transform_data(data, edge_attr=None):
+    def transform_data(data, edge_length=None, sigma: float = None, add_self_loops=False):
         # From Emanuele Rossi et al., ‘On the Unreasonable Effectiveness of Feature Propagation in Learning on Graphs with Missing Node Features’,
         # arXiv:2111.12128, preprint, arXiv, 23 May 2022, https://doi.org/10.48550/arXiv.2111.12128.
         # https://pytorch-geometric.readthedocs.io/en/stable/generated/torch_geometric.transforms.FeaturePropagation.html#torch_geometric.transforms.FeaturePropagation
@@ -36,18 +29,25 @@ class GenericPhyloDataset(Dataset):
 
         # Feature propagation transform breaks with edge attributes, so add them back in before the undirected transform.
 
-        # Rescales them so that the elements of the n-dimensional output Tensor lie in the range [0,1] and sum to 1.
-        # This is a fix for the label propagation process, which clamps values in [0,1]
-        edge_weight = softmax(edge_attr, data.edge_index[0])
-        # min_w = edge_attr.min()
-        # max_w = edge_attr.max()
-        # edge_weight = (edge_attr - min_w) / (max_w - min_w + 1e-9)
+        # Following Xiaojin Zhu and Zoubin Ghahramani, Learning from Labeled and Unlabeled Data with Label Propagation (Carnegie Mellon University, Pittsburgh, 2002).
+        # Set edge weights to e^(-d^2/sigma^2)
 
-        # edge_index, edge_weight = gcn_norm(data.edge_index, edge_weight=edge_attr, num_nodes=edge_attr.size(0),
-        #                                    add_self_loops=False)
+        # First scale the edge lengths to be between 0 and 1, so that all cases are working at same scale.
+        edge_length_scaled = edge_length / torch.max(edge_length)
 
+        if sigma is None:
+            # Following Zhu, 2002
+            # d_zero is the shortest distance between two nodes with different labels.
+            d_zero = edge_length_scaled.mean()
+            sigma = d_zero/3
+            raise NotImplementedError
+        edge_weight = torch.exp(-(edge_length_scaled ** 2) / (sigma ** 2))
 
-        data.edge_attr = edge_attr
+        data.edge_weight = edge_weight
+
+        if add_self_loops:
+            data = AddSelfLoops(fill_value=1)(data)
+
         ToUndirected_transform = ToUndirected(reduce='mean')
         data = ToUndirected_transform(data)
         return data
@@ -162,7 +162,8 @@ class DistanceMatrixDataset(GenericPhyloDataset):
                  target_name: str,
                  binary_or_continuous: str,
                  threshold: Optional[float] = None,
-                 k_nearest: Optional[int] = None):
+                 k_nearest: Optional[int] = None,
+                 sigma: float = 1, ):
         """
         Args:
             tree_distance_csv_path: Path to CSV file with distance matrix. This is created in R with tree_distances = ape::cophenetic.phylo(out_tree) and written to a file with  write.csv.
@@ -193,6 +194,8 @@ class DistanceMatrixDataset(GenericPhyloDataset):
 
         self.target_name = target_name
 
+        self.sigma = sigma
+
         super().__init__()
 
         # Load the data
@@ -213,7 +216,7 @@ class DistanceMatrixDataset(GenericPhyloDataset):
         elif self.k_nearest is not None:
             # Create edges to k-nearest neighbors
             edge_list = []
-            edge_weights = []
+            edge_lengths = []
 
             for i in range(num_nodes):
                 # Get indices of k+1 smallest distances (includes self)
@@ -226,10 +229,10 @@ class DistanceMatrixDataset(GenericPhyloDataset):
 
                 for j in nearest:
                     edge_list.append([i, j])
-                    edge_weights.append(self.dist_matrix[i, j])
+                    edge_lengths.append(self.dist_matrix[i, j])
 
             edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
-            edge_attr = torch.tensor(edge_weights, dtype=torch.float).view(-1, 1)
+            edge_attr = torch.tensor(edge_lengths, dtype=torch.float).view(-1, 1)
 
         else:
             # Fully connected graph (all pairs except self-loops)
@@ -254,7 +257,7 @@ class DistanceMatrixDataset(GenericPhyloDataset):
             edge_index=edge_index,
             # edge_attr=edge_attr # Feature propagation transform breaks with edge attributes, so add them back in before the undirected transform.
         )
-        data = self.transform_data(data, edge_attr=edge_attr)
+        data = self.transform_data(data, edge_length=edge_attr, sigma=self.sigma)
 
         return data
 
@@ -267,7 +270,8 @@ class NewickDataset(GenericPhyloDataset):
                  feature_csv_path_with_missing_target: str,
                  ground_truth_csv_path: str,
                  target_name: str,
-                 binary_or_continuous: str):
+                 binary_or_continuous: str,
+                 sigma: float = None):
         """
         Args:
             newick_tree_path: Path to CSV file with newick tree.
@@ -295,6 +299,7 @@ class NewickDataset(GenericPhyloDataset):
         self.ground_truth_df = pd.read_csv(ground_truth_csv_path, index_col=0)
         self.target_name = target_name
 
+        self.sigma = sigma
         super().__init__()
 
         # Load the data
@@ -314,12 +319,12 @@ class NewickDataset(GenericPhyloDataset):
                 parent_name = clade.name
                 child_name = child.name
                 G.add_edge(parent_name, child_name,
-                           weight=child.branch_length)
+                           length=child.branch_length)
 
         return G
 
     def _process(self):
-        edge_attr = torch.tensor([self.networkx_tree[u][v]['weight'] for u, v in self.networkx_tree.edges()]).view(-1, 1)
+        edge_attr = torch.tensor([self.networkx_tree[u][v]['length'] for u, v in self.networkx_tree.edges()]).view(-1, 1)
         pyg_data = from_networkx(self.networkx_tree)
         X, y, train_mask, test_mask, y_dtype = self.get_features_and_masks()
 
@@ -331,7 +336,7 @@ class NewickDataset(GenericPhyloDataset):
             edge_index=pyg_data.edge_index,
             # edge_attr=edge_attr # Feature propagation transform breaks with edge attributes, so add them back in before the undirected transform.
         )
-        data = self.transform_data(data, edge_attr=edge_attr)
+        data = self.transform_data(data, edge_length=edge_attr, sigma=self.sigma)
 
         return data
 
@@ -372,13 +377,13 @@ def main():
         print(f"Number of nodes: {len(dataset1.node_names)}")
         print(f"Number of edges: {data.edge_index.shape[1]}")
         print(f"Node feature shape: {data.x.shape}")
-        print(f"Edge attribute shape: {data.edge_attr.shape}")
+        print(f"Edge attribute shape: {data.edge_weight.shape}")
         print(f'Number of training nodes: {int(data.train_mask.sum())}')
         print(f'Number of testing nodes: {int(data.test_mask.sum())}')
 
         # You can now use this like any PyG dataset
         print(f"\nEdge indices (first 5): {data.edge_index[:, :5]}")
-        print(f"Edge attributes (first 5): {data.edge_attr[:5].flatten()}")
+        print(f"Edge attributes (first 5): {data.edge_weight[:5].flatten()}")
 
 
 if __name__ == '__main__':

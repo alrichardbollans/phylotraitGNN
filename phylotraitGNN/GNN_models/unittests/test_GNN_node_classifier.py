@@ -80,17 +80,16 @@ class TestGCN(unittest.TestCase):
         self.assertNotEqual(brier1, brier)
 
         # Check it's not just outputting the same values
-        out_ = model(data.x, data.edge_index, edge_attr=data.edge_attr)
+        out_ = model(data.x, data.edge_index, edge_attr=data.edge_weight)
         self.for_model_outputs(out_, dataset)
 
         # Test edge attributes are being used
         with torch.no_grad():
             # Clone data, zero out edge_attr if it exists
             data_no_edge_attr = copy.deepcopy(data)
-            if hasattr(data, 'edge_attr'):
-                data_no_edge_attr.edge_attr = torch.zeros_like(data.edge_attr)
+            data_no_edge_attr.edge_weight = torch.zeros_like(data.edge_weight)
             out_with_none = model(data.x, data.edge_index, None)
-            out_without = model(data_no_edge_attr.x, data_no_edge_attr.edge_index, data_no_edge_attr.edge_attr)
+            out_without = model(data_no_edge_attr.x, data_no_edge_attr.edge_index, data_no_edge_attr.edge_weight)
             assert not torch.allclose(out_, out_without), "Model outputs are unchanged by edge_attr!"
             assert not torch.allclose(out_, out_with_none), "Model outputs are unchanged by edge_attr!"
 
