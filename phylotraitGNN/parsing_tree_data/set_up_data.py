@@ -29,24 +29,39 @@ class GenericPhyloDataset(Dataset):
 
         # Feature propagation transform breaks with edge attributes, so add them back in before the undirected transform.
 
-        # Following Xiaojin Zhu and Zoubin Ghahramani, Learning from Labeled and Unlabeled Data with Label Propagation (Carnegie Mellon University, Pittsburgh, 2002).
-        # Set edge weights to e^(-d^2/sigma^2)
-
-        # First scale the edge lengths to be between 0 and 1, so that all cases are working at same scale.
-        edge_length_scaled = edge_length / torch.max(edge_length)
-
+        original_edge_std = edge_length.std()
+        data.original_edge_std = original_edge_std
         if sigma is None:
+            # Setting sigma will mean the generated edge weights are the same as if the lengths hadn't been scaled.
+            # Large values of sigma essentially shrinks the graph, so all unlabelled points are predicted to be the same.
+            # Small values of sigma mean the nearest points dominate.
             # Following Zhu, 2002
             # d_zero is the shortest distance between two nodes with different labels.
-            d_zero = edge_length_scaled.mean()
-            sigma = d_zero/3
-            raise NotImplementedError
-        edge_weight = torch.exp(-(edge_length_scaled ** 2) / (sigma ** 2))
+            # This can give tiny values of sigma, which destroy weights
+            # differing_lengths = []
+            # for i in range(data.edge_index.shape[1]):
+            #     src, dst = data.edge_index[0, i], data.edge_index[1, i]
+            #     if data.y[src] != data.y[dst]:
+            #         differing_lengths.append(edge_length_scaled[i])
+            #
+            # if differing_lengths:
+            #     d_zero = min(differing_lengths)
+            # else:
+            #     d_zero = edge_length_scaled.mean()  # or fallback to some default, e.g., edge_lengths.mean()
+
+            # Following Dengyong Zhou et al., Learning with Local and Global Consistency
+            # sigma appears to just be std, which gives more reasonable weights
+            sigma = original_edge_std
+
+        # Following Xiaojin Zhu and Zoubin Ghahramani, Learning from Labeled and Unlabeled Data with Label Propagation (Carnegie Mellon University, Pittsburgh, 2002).
+        # Set edge weights to e^(-d^2/sigma^2)
+        edge_weight = torch.exp(-(edge_length ** 2) / (sigma ** 2))
 
         data.edge_weight = edge_weight
 
         if add_self_loops:
             data = AddSelfLoops(fill_value=1)(data)
+            raise NotImplementedError("Need to check data.values are preserved correctly after adding self loops.")
 
         ToUndirected_transform = ToUndirected(reduce='mean')
         data = ToUndirected_transform(data)
@@ -163,7 +178,7 @@ class DistanceMatrixDataset(GenericPhyloDataset):
                  binary_or_continuous: str,
                  threshold: Optional[float] = None,
                  k_nearest: Optional[int] = None,
-                 sigma: float = 1, ):
+                 sigma: float = None, ):
         """
         Args:
             tree_distance_csv_path: Path to CSV file with distance matrix. This is created in R with tree_distances = ape::cophenetic.phylo(out_tree) and written to a file with  write.csv.
@@ -295,7 +310,9 @@ class NewickDataset(GenericPhyloDataset):
             raise ValueError("No nodes found in tree that aren't tips. Nodes should be named 'Node_x' where x is the node number.")
 
         # Read the feature CSV file. It holds
+        self.feature_csv_path_with_missing_target = feature_csv_path_with_missing_target
         self.feature_with_missing_target_df = pd.read_csv(feature_csv_path_with_missing_target, index_col=0)
+        self.ground_truth_csv_path = ground_truth_csv_path
         self.ground_truth_df = pd.read_csv(ground_truth_csv_path, index_col=0)
         self.target_name = target_name
 

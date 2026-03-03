@@ -1,12 +1,9 @@
 import torch
-from sklearn.metrics import brier_score_loss
-from torch_geometric.explain import Explainer, GNNExplainer
-from torch_geometric.nn import GCNConv, GATConv, GATv2Conv, LabelPropagation
 import torch.nn.functional as F
-from torch_geometric.transforms import FeaturePropagation
+from torch_geometric.nn import GATv2Conv
 
-from phylotraitGNN.GNN_models import propagate_labels, test_binary
-from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset, GenericPhyloDataset
+from phylotraitGNN.GNN_models import test_binary
+from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset
 
 
 # from phylotraitGNN.parsing_tree_data.visualising import explaining
