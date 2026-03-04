@@ -4,7 +4,7 @@ setup(
     name='phylotraitGNN',
     description='A package for running GNNs on phylogenetic trees',
     license='Attribution-NonCommercial-ShareAlike 4.0 International',
-    packages=find_packages(include=['phylotraitGNN']),
+    packages=find_packages(),
 
     install_requires=[
         "pandas",
