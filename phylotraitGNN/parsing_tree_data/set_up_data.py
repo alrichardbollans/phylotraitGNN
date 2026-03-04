@@ -33,22 +33,8 @@ class GenericPhyloDataset(Dataset):
         super().__init__(transform=transform)
 
     @staticmethod
-    def transform_data(data, edge_length=None, sigma: float = None, add_self_loops=False):
-        # From Emanuele Rossi et al., ‘On the Unreasonable Effectiveness of Feature Propagation in Learning on Graphs with Missing Node Features’,
-        # arXiv:2111.12128, preprint, arXiv, 23 May 2022, https://doi.org/10.48550/arXiv.2111.12128.
-        # https://pytorch-geometric.readthedocs.io/en/stable/generated/torch_geometric.transforms.FeaturePropagation.html#torch_geometric.transforms.FeaturePropagation
-        # if data.x.shape[1] == 0:
-        #     data.x = torch.ones((data.num_nodes, 1))
-        # else:
-        missing_mask = torch.isnan(data.x)
-        FeaturePropagation_transform = FeaturePropagation(missing_mask=missing_mask)
-        if torch.any(missing_mask):
-            data = FeaturePropagation_transform(data)
-
-        # Feature propagation transform breaks with edge attributes, so add them back in before the undirected transform.
-
+    def get_edge_weights(edge_length, sigma: float = None):
         original_edge_std = edge_length.std()
-        data.original_edge_std = original_edge_std
         if sigma is None:
             # Setting sigma will mean the generated edge weights are the same as if the lengths hadn't been scaled.
             # Large values of sigma essentially shrinks the graph, so all unlabelled points are predicted to be the same.
@@ -75,7 +61,26 @@ class GenericPhyloDataset(Dataset):
         # Set edge weights to e^(-d^2/sigma^2)
         edge_weight = torch.exp(-(edge_length ** 2) / (sigma ** 2))
 
+        return edge_weight, original_edge_std
+
+    @staticmethod
+    def transform_data(data, edge_length, sigma: float = None, add_self_loops=False):
+        # From Emanuele Rossi et al., ‘On the Unreasonable Effectiveness of Feature Propagation in Learning on Graphs with Missing Node Features’,
+        # arXiv:2111.12128, preprint, arXiv, 23 May 2022, https://doi.org/10.48550/arXiv.2111.12128.
+        # https://pytorch-geometric.readthedocs.io/en/stable/generated/torch_geometric.transforms.FeaturePropagation.html#torch_geometric.transforms.FeaturePropagation
+        # if data.x.shape[1] == 0:
+        #     data.x = torch.ones((data.num_nodes, 1))
+        # else:
+        missing_mask = torch.isnan(data.x)
+        FeaturePropagation_transform = FeaturePropagation(missing_mask=missing_mask)
+        if torch.any(missing_mask):
+            data = FeaturePropagation_transform(data)
+
+        # Feature propagation transform breaks with edge attributes, so add them back in before the undirected transform.
+        edge_weight, original_edge_std = GenericPhyloDataset.get_edge_weights(edge_length, sigma)
+        data.original_edge_std = original_edge_std
         data.edge_weight = edge_weight
+        data.edge_length = edge_length
 
         if add_self_loops:
             data = AddSelfLoops(fill_value=1)(data)
@@ -83,6 +88,7 @@ class GenericPhyloDataset(Dataset):
 
         ToUndirected_transform = ToUndirected(reduce='mean')
         data = ToUndirected_transform(data)
+
         return data
 
     def checks(self):

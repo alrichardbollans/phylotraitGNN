@@ -12,6 +12,9 @@ setup(
         'scikit-learn',
         'torch',
         'torch-geometric',
+        'biopython',
+        'networkx',
+        'bayesian-optimization==3.2.0'
     ],
     # *strongly* suggested for sharing
     version='1.0',

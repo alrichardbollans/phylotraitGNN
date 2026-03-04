@@ -42,7 +42,7 @@ def get_datasets_for_cross_validation(dataset: GenericPhyloDataset, number_of_sp
         # Deepcopy dataset and data
         ds_copy = deepcopy(dataset)
         # Reset masks
-        # print('Note that nodes in initial training mask will have been used for feature propagation when setting up data.')
+        print('Note that nodes in initial training mask will have been used for feature propagation when setting up data.')
         ds_copy.data.train_mask = torch.zeros_like(data.train_mask, dtype=torch.bool)
         ds_copy.data.train_mask[train_indices] = True
 
@@ -59,25 +59,20 @@ def find_LP_hyperparameters(dataset: GenericPhyloDataset, verbose: int = 2, init
     original_sigma = dataset.data.original_edge_std
     assert dataset.binary_or_continuous == 'binary'
 
+    # Create datasets for cross-validation
+    cross_val_datasets = get_datasets_for_cross_validation(deepcopy(dataset), number_of_splits=5)
+
     def black_box_function(alpha, num_layers, sigma_ratio):
         """Function with unknown internals we wish to maximize.
 
         When NaN is returned for all values of cross_val_score, the current worst score is returned. This will break if the first try returns NaN.
         """
 
-        main_dataset_with_new_sigma = NewickDataset(
-            newick_tree_path=dataset.newick_tree_path,
-            feature_csv_path_with_missing_target=dataset.feature_csv_path_with_missing_target,
-            ground_truth_csv_path=dataset.ground_truth_csv_path,
-            target_name=dataset.target_name,
-            binary_or_continuous=dataset.binary_or_continuous,
-            sigma=original_sigma * sigma_ratio,
-
-        )
-        cross_val_datasets = get_datasets_for_cross_validation(main_dataset_with_new_sigma, number_of_splits=5)
-
         cross_val_scores = []
         for crossval_dataset in cross_val_datasets:
+            # Reassign edge weights using sigma_ratio
+            new_edge_weight, original_edge_std = crossval_dataset.get_edge_weights(crossval_dataset.data.edge_length, original_sigma * sigma_ratio)
+            crossval_dataset.data.edge_weight = new_edge_weight
             probs = propagate_labels(crossval_dataset, num_layers=num_layers, alpha=alpha)
             test_acc, b_score = test_binary(probs, crossval_dataset.data)
             # BayesianOptimization has no option to minimise, so we invert the brier score

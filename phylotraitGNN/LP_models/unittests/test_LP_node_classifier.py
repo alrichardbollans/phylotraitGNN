@@ -4,6 +4,8 @@ import unittest
 
 import torch
 import torch.nn.functional as F
+
+from phylotraitGNN.GNN_models import test_binary
 from phylotraitGNN.GNN_models.GNN_node_classifier import GCN, train_gcn_model
 from torch_geometric.data import Data
 
@@ -90,6 +92,22 @@ class TestGCN(unittest.TestCase):
 
         )
         self.for_model_outputs(propagate_labels(dataset), dataset)
+
+    def test_where_y_all_same_values(self):
+        dataset = DistanceMatrixDataset(
+            tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary_no_features/tree_distances.csv',
+            feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary_no_features/mcar_values.csv',
+            ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary_no_features/ground_truth.csv',
+            target_name='trait_ARD',
+            binary_or_continuous='binary',
+
+        )
+        # make y a Tensor of shape y with all values the same
+        dataset.data.y = torch.zeros(dataset.data.y.shape, dtype=torch.long)
+        output = propagate_labels(dataset)
+        assert output.shape == torch.Size([100, 2])
+        test_binary(output, dataset.data)
+
 
 
 if __name__ == "__main__":

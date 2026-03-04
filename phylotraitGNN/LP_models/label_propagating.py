@@ -60,7 +60,19 @@ def propagate_labels(dataset: GenericPhyloDataset, num_layers=3, alpha=0.9):
     assert dataset.binary_or_continuous == 'binary'  # label propagation only works for discrete labels
     data = dataset.data
     model = LabelPropagation(num_layers=num_layers, alpha=alpha)
-    out = model(data.y, data.edge_index, mask=data.train_mask, edge_weight=data.edge_weight, post_step=my_post_step)
+    # Where y values are all the same, instead of training the model, out should be a tensor with two columns, one for each class.
+    # Values in the column denoting the class that appears in y should be 1, and all other values should be 0.
+    if torch.unique(data.y).shape[0] == 1:
+        out = torch.zeros((data.y.shape[0], 2))
+        if torch.unique(data.y) == 0:
+            # set first column of out to all 1s
+            out[:, 0] = 1
+        elif torch.unique(data.y) == 1:
+            out[:, 1] = 1
+        else:
+            raise ValueError('y must contain only 0 or 1')
+    else:
+        out = model(data.y, data.edge_index, mask=data.train_mask, edge_weight=data.edge_weight, post_step=my_post_step)
     return out
 
 
