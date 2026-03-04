@@ -11,7 +11,25 @@ from torch_geometric.utils import from_networkx
 
 
 class GenericPhyloDataset(Dataset):
-    def __init__(self, transform: Optional[Callable] = None):
+    def __init__(self, feature_csv_path_with_missing_target: str,
+                 target_name: str,
+                 binary_or_continuous: str,
+                 ground_truth_csv_path: str = None,
+                 sigma: float = None, transform: Optional[Callable] = None):
+
+        self.binary_or_continuous = binary_or_continuous
+        self.target_name = target_name
+
+        # Read the feature CSV file. It holds
+        self.feature_csv_path_with_missing_target = feature_csv_path_with_missing_target
+        self.feature_with_missing_target_df = pd.read_csv(feature_csv_path_with_missing_target, index_col=0)
+        self.ground_truth_csv_path = ground_truth_csv_path
+        if ground_truth_csv_path is not None:
+            self.ground_truth_df = pd.read_csv(ground_truth_csv_path, index_col=0)
+        else:
+            self.ground_truth_df = None
+
+        self.sigma = sigma
         super().__init__(transform=transform)
 
     @staticmethod
@@ -75,12 +93,13 @@ class GenericPhyloDataset(Dataset):
 
         for node in self.feature_with_missing_target_df.index:
             assert node in self.node_names, f"Node {node} not found in tree."
-        pd.testing.assert_frame_equal(self.ground_truth_df.drop(columns=[self.target_name]),
-                                      self.feature_with_missing_target_df.drop(columns=[self.target_name]))
-        pd.testing.assert_frame_equal(self.ground_truth_df[~self.feature_with_missing_target_df[self.target_name].isna()],
-                                      self.feature_with_missing_target_df.dropna(subset=[self.target_name]), check_dtype=False)
+        if self.ground_truth_df is not None:
+            pd.testing.assert_frame_equal(self.ground_truth_df.drop(columns=[self.target_name]),
+                                          self.feature_with_missing_target_df.drop(columns=[self.target_name]))
+            pd.testing.assert_frame_equal(self.ground_truth_df[~self.feature_with_missing_target_df[self.target_name].isna()],
+                                          self.feature_with_missing_target_df.dropna(subset=[self.target_name]), check_dtype=False)
         if self.binary_or_continuous == 'binary':
-            assert self.num_classes == 2
+            assert self.num_classes <= 2
 
         # print(data.train_mask.sum(), data.test_mask.sum())
         assert (self.data.train_mask & self.data.test_mask).sum() == 0  # should be 0
@@ -90,8 +109,9 @@ class GenericPhyloDataset(Dataset):
         nan_value = torch.tensor(np.array([np.nan]), dtype=torch.int64).numpy()[0]
 
         test_y = self.data.y[self.data.test_mask]
-        assert ~torch.any(torch.isnan(test_y))
-        assert ~torch.any(test_y == nan_value)
+        if self.ground_truth_csv_path is not None:
+            assert ~torch.any(torch.isnan(test_y))
+            assert ~torch.any(test_y == nan_value)
 
         train_y = self.data.y[self.data.train_mask]
         assert ~torch.any(torch.isnan(train_y))
@@ -101,7 +121,7 @@ class GenericPhyloDataset(Dataset):
         # Create train/val/test masks from missing target values
         y_with_missing_target_df = self.feature_with_missing_target_df[[self.target_name]]
 
-        X_feature_df = self.ground_truth_df.drop(columns=[self.target_name])
+        X_feature_df = self.feature_with_missing_target_df.drop(columns=[self.target_name])
 
         feature_names = X_feature_df.columns
         # try:
@@ -109,10 +129,14 @@ class GenericPhyloDataset(Dataset):
         # except AssertionError:
         #     raise ValueError("Input data tables must have at least one feature (non target) column.")
 
-        pd.testing.assert_frame_equal(X_feature_df, self.ground_truth_df[feature_names])
+        if self.ground_truth_df is not None:
+            pd.testing.assert_frame_equal(X_feature_df, self.ground_truth_df[feature_names])
 
-        y_df = self.ground_truth_df[[self.target_name]]
+            y_df = self.ground_truth_df[[self.target_name]]
+        else:
+            y_df = self.feature_with_missing_target_df[[self.target_name]]
 
+        mode_training_value = y_with_missing_target_df[self.target_name].dropna().mode()[0]
         node_target_df = pd.DataFrame()
         if hasattr(self, 'nodes_that_arent_tips'):
             ## When there are nodes that arent tips, these have no feature values.
@@ -128,7 +152,6 @@ class GenericPhyloDataset(Dataset):
             ## The actual value shouldn't really matter as masks are used to exclude these nodes from training and testing.
             ## and also include in both masks as False.? Or in train mask?
 
-            mode_training_value = y_with_missing_target_df[self.target_name].dropna().mode()[0]
             node_target_df = pd.DataFrame([[mode_training_value]] * (len(self.nodes_that_arent_tips)), index=self.nodes_that_arent_tips,
                                           columns=[self.target_name])
             node_target_df.index.name = 'accepted_species'
@@ -140,6 +163,8 @@ class GenericPhyloDataset(Dataset):
         # Both X and y are sorted by self.node_names
         X = X_feature_df.loc[self.node_names].values  # Align with node names
 
+        if self.ground_truth_df is None:
+            y_df[self.target_name] = y_df[self.target_name].fillna(mode_training_value)
         y = y_df.loc[self.node_names][self.target_name].values  # Align with node names
 
         y_with_missing_target_df = y_with_missing_target_df.loc[self.node_names]  # Align with node names
@@ -173,11 +198,11 @@ class DistanceMatrixDataset(GenericPhyloDataset):
     def __init__(self,
                  tree_distance_csv_path: str,
                  feature_csv_path_with_missing_target: str,
-                 ground_truth_csv_path: str,
                  target_name: str,
                  binary_or_continuous: str,
                  threshold: Optional[float] = None,
                  k_nearest: Optional[int] = None,
+                 ground_truth_csv_path: str = None,
                  sigma: float = None, ):
         """
         Args:
@@ -196,22 +221,16 @@ class DistanceMatrixDataset(GenericPhyloDataset):
         if threshold is not None and k_nearest is not None:
             raise NotImplementedError("Only one of threshold or k_nearest can be set.")
 
-        self.binary_or_continuous = binary_or_continuous
-
         # Read the tree CSV file
         self.tree_distance_df = pd.read_csv(tree_distance_csv_path, index_col=0)
         self.node_names = self.tree_distance_df.index.tolist()
         self.dist_matrix = self.tree_distance_df.values
 
-        # Read the feature CSV file. It holds
-        self.feature_with_missing_target_df = pd.read_csv(feature_csv_path_with_missing_target, index_col=0)
-        self.ground_truth_df = pd.read_csv(ground_truth_csv_path, index_col=0)
-
-        self.target_name = target_name
-
-        self.sigma = sigma
-
-        super().__init__()
+        super().__init__(feature_csv_path_with_missing_target,
+                         target_name,
+                         binary_or_continuous,
+                         ground_truth_csv_path=ground_truth_csv_path,
+                         sigma=sigma)
 
         # Load the data
         self.data = self._process()
@@ -283,9 +302,9 @@ class NewickDataset(GenericPhyloDataset):
     def __init__(self,
                  newick_tree_path: str,
                  feature_csv_path_with_missing_target: str,
-                 ground_truth_csv_path: str,
                  target_name: str,
                  binary_or_continuous: str,
+                 ground_truth_csv_path: str = None,
                  sigma: float = None):
         """
         Args:
@@ -298,8 +317,6 @@ class NewickDataset(GenericPhyloDataset):
         """
         self.newick_tree_path = newick_tree_path
 
-        self.binary_or_continuous = binary_or_continuous
-
         # Read the tree CSV file
         self.networkx_tree = self.newick_to_networkx(newick_tree_path)
         # Nodes should all be named 'Node_x' where x is the node number
@@ -309,15 +326,11 @@ class NewickDataset(GenericPhyloDataset):
         if len(self.nodes_that_arent_tips) == 0:
             raise ValueError("No nodes found in tree that aren't tips. Nodes should be named 'Node_x' where x is the node number.")
 
-        # Read the feature CSV file. It holds
-        self.feature_csv_path_with_missing_target = feature_csv_path_with_missing_target
-        self.feature_with_missing_target_df = pd.read_csv(feature_csv_path_with_missing_target, index_col=0)
-        self.ground_truth_csv_path = ground_truth_csv_path
-        self.ground_truth_df = pd.read_csv(ground_truth_csv_path, index_col=0)
-        self.target_name = target_name
-
-        self.sigma = sigma
-        super().__init__()
+        super().__init__(feature_csv_path_with_missing_target,
+                         target_name,
+                         binary_or_continuous,
+                         ground_truth_csv_path=ground_truth_csv_path,
+                         sigma=sigma)
 
         # Load the data
         self.data = self._process()

@@ -8,8 +8,6 @@ from phylotraitGNN.GNN_models import test_binary
 from phylotraitGNN.parsing_tree_data import GenericPhyloDataset, DistanceMatrixDataset
 
 
-
-
 def my_post_step(out):
     # The aggregation step in Label Propagation sums over neighbouring nodes, which in some cases blows up the estimates (which means alpha loses its effectiveness).
     # This fixes that case while also fixing issues with the default clamping process. See: https://github.com/pyg-team/pytorch_geometric/issues/10627
@@ -30,6 +28,36 @@ def my_post_step(out):
 
 
 def propagate_labels(dataset: GenericPhyloDataset, num_layers=3, alpha=0.9):
+    """
+    Propagates labels in a dataset using label propagation. This function applies a label
+    propagation model to discrete binary labels in the provided dataset. It is particularly
+    suitable for datasets with graph-like structures, where nodes are associated with
+    labels and connections (edges) influence label propagation.
+
+    The dataset should have no self-loops and edges should be symmetric (Zhou, 2003).
+
+    Parameters:
+    dataset : GenericPhyloDataset
+        The dataset containing the data to which label propagation will be applied.
+        The dataset must have binary labels, as label propagation is only compatible
+        with discrete labels.
+
+    num_layers : int, optional
+        The number of layers in the label propagation model. Default is 3.
+
+    alpha : float, optional
+        During each iteration each point receives information from its neighbors,
+        and also retains its initial information.
+        The alpha parameter specifies the relative amount of the information from its neighbors
+        and its initial label information
+        Must be a float value between 0 and 1. Default is 0.9.
+
+    Returns:
+    Tensor
+        The output resulting from label propagation, reflecting the updated labels
+        after applying the propagation model.
+    """
+    assert dataset.binary_or_continuous == 'binary'  # label propagation only works for discrete labels
     data = dataset.data
     model = LabelPropagation(num_layers=num_layers, alpha=alpha)
     out = model(data.y, data.edge_index, mask=data.train_mask, edge_weight=data.edge_weight, post_step=my_post_step)
@@ -42,7 +70,6 @@ def evaluate_label_propagation(dataset: GenericPhyloDataset, num_layers=3, alpha
     test_acc, b_score = test_binary(probs, dataset.data)
     print(f'Test Accuracy: {test_acc:.4f}')
     print(f'Test Brier: {b_score:.4f}')
-
 
 
 def main():

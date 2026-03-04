@@ -4,7 +4,7 @@ import unittest
 
 import torch
 import torch.nn.functional as F
-from phylotraitGNN.GNN_models.GNN_node_classifier import GCN, propagate_labels, train_gcn_model
+from phylotraitGNN.GNN_models.GNN_node_classifier import GCN, train_gcn_model
 from torch_geometric.data import Data
 
 from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset
@@ -122,12 +122,38 @@ class TestGCN(unittest.TestCase):
 
         self.for_a_dataset_and_model(dataset, model)
 
+    def test_distance_training_process_no_gt(self):
+
+        dataset = DistanceMatrixDataset(
+            tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary/tree_distances.csv',
+            feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
+            target_name='trait_BM_trend_scaled',
+            binary_or_continuous='binary'
+
+        )
+        model = GCN(dataset, hidden_channels=4)
+
+        self.for_a_dataset_and_model(dataset, model)
+
     def test_newick_training_process(self):
 
         dataset = NewickDataset(
             newick_tree_path='../../parsing_tree_data/unittest_data/binary/tree.tre',
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
             ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary/ground_truth.csv',
+            target_name='trait_BM_trend_scaled',
+            binary_or_continuous='binary'
+
+        )
+        model = GCN(dataset, hidden_channels=4)
+
+        self.for_a_dataset_and_model(dataset, model)
+
+    def test_newick_training_process_not_gt(self):
+
+        dataset = NewickDataset(
+            newick_tree_path='../../parsing_tree_data/unittest_data/binary/tree.tre',
+            feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
             target_name='trait_BM_trend_scaled',
             binary_or_continuous='binary'
 
@@ -145,7 +171,6 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary',
 
         )
-        self.for_model_outputs(propagate_labels(dataset), dataset)
 
         model = GCN(dataset, hidden_channels=4)
         try:
@@ -164,7 +189,6 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary',
 
         )
-        self.for_model_outputs(propagate_labels(dataset), dataset)
 
         model = GCN(dataset, hidden_channels=4)
 

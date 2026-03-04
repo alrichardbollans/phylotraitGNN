@@ -107,6 +107,34 @@ class TestDistanceMatrixDataset(unittest.TestCase):
         self.assertEqual(data.node_stores[0]['y'][1],1)
         self.assertEqual(data.node_stores[0]['y'][2],1)
 
+    def test_dataset_process_no_ground_truth(self):
+        dataset = DistanceMatrixDataset(
+            tree_distance_csv_path=self.tree_distance_csv_path,
+            feature_csv_path_with_missing_target=self.feature_csv_path,
+            target_name="Target",
+            binary_or_continuous="binary"
+        )
+
+        data = dataset.get(0)
+        self.assertEqual(data.num_nodes, 3)
+        self.assertTrue(data.train_mask[0].item())
+        self.assertFalse(data.train_mask[1].item())
+        self.assertFalse(data.train_mask[2].item())
+        self.assertTrue(data.test_mask[1].item())
+        self.assertTrue(data.test_mask[2].item())
+        self.assertFalse(data.test_mask[0].item())
+        self.assertEqual(len(data.edge_index[0]), 6)  # Undirected graph, i.e.
+
+        self.assertEqual(data.node_stores[0]['x'][0,0],1)
+        self.assertEqual(data.node_stores[0]['x'][0,1],2)
+        self.assertEqual(data.node_stores[0]['x'][2,0],4)
+        self.assertEqual(data.node_stores[0]['x'][2,1],8)
+
+        self.assertEqual(data.node_stores[0]['y'][0],0)
+        nan_value = torch.tensor(np.array([np.nan]), dtype=torch.int64).numpy()[0]
+        self.assertEqual(data.node_stores[0]['y'][1],0)
+        self.assertEqual(data.node_stores[0]['y'][2],0)
+
     def test_invalid_binary_or_continuous(self):
         with self.assertRaises(ValueError):
             DistanceMatrixDataset(
