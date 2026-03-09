@@ -55,7 +55,10 @@ class GenericPhyloDataset(Dataset):
 
             # Following Dengyong Zhou et al., Learning with Local and Global Consistency
             # sigma appears to just be std, which gives more reasonable weights
-            sigma = original_edge_std
+            if original_edge_std == 0:
+                sigma = 1
+            else:
+                sigma = original_edge_std
 
         # Following Xiaojin Zhu and Zoubin Ghahramani, Learning from Labeled and Unlabeled Data with Label Propagation (Carnegie Mellon University, Pittsburgh, 2002).
         # Set edge weights to e^(-d^2/sigma^2)

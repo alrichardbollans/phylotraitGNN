@@ -2,10 +2,8 @@ from copy import deepcopy
 
 import numpy as np
 import torch
-from sklearn.metrics import make_scorer, brier_score_loss
 
-from phylotraitGNN.GNN_models import test_binary
-from phylotraitGNN.LP_models import propagate_labels
+from phylotraitGNN.LP_models import propagate_labels, test_binary_LP_outputs
 from phylotraitGNN.parsing_tree_data import GenericPhyloDataset, NewickDataset
 
 from bayes_opt import BayesianOptimization
@@ -74,7 +72,7 @@ def find_LP_hyperparameters(dataset: GenericPhyloDataset, verbose: int = 2, init
             new_edge_weight, original_edge_std = crossval_dataset.get_edge_weights(crossval_dataset.data.edge_length, original_sigma * sigma_ratio)
             crossval_dataset.data.edge_weight = new_edge_weight
             probs = propagate_labels(crossval_dataset, num_layers=num_layers, alpha=alpha)
-            test_acc, b_score = test_binary(probs, crossval_dataset.data)
+            test_acc, b_score = test_binary_LP_outputs(probs, crossval_dataset.data)
             # BayesianOptimization has no option to minimise, so we invert the brier score
             cross_val_scores.append(1 - b_score)
         mean_cv_score = np.mean(cross_val_scores)
@@ -83,7 +81,7 @@ def find_LP_hyperparameters(dataset: GenericPhyloDataset, verbose: int = 2, init
 
     # Bounded region of parameter space
     pbounds = {'num_layers': (1, 50, int),
-               'alpha': (0, 1.0),
+               'alpha': (0, 1.0),  #
                'sigma_ratio': (0.1, 10)}
 
     optimizer = BayesianOptimization(

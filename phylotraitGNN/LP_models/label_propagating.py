@@ -1,10 +1,7 @@
 import torch
-from sklearn.metrics import make_scorer, brier_score_loss
 from torch_geometric.nn import LabelPropagation
-import torch.nn.functional as F
-from torch_geometric.transforms import AddSelfLoops
 
-from phylotraitGNN.GNN_models import test_binary
+from phylotraitGNN.LP_models import test_binary_LP_outputs
 from phylotraitGNN.parsing_tree_data import GenericPhyloDataset, DistanceMatrixDataset
 
 
@@ -25,6 +22,18 @@ def my_post_step(out):
     mask = (row_sums > 1)
     clamped_out = torch.where(mask, normalized_out, out)
     return clamped_out
+
+
+def normalize_outputs_for_testing(out_):
+    row_sums = out_.sum(dim=1, keepdim=True)
+
+    # Normalized output
+    normalized_out = out_ / row_sums
+
+    # where normalised out rows are nan, replace with 0.5
+    mask = (row_sums == 0).squeeze()
+    normalized_out[mask] = 0.5
+    return normalized_out
 
 
 def propagate_labels(dataset: GenericPhyloDataset, num_layers=3, alpha=0.9):
@@ -73,15 +82,8 @@ def propagate_labels(dataset: GenericPhyloDataset, num_layers=3, alpha=0.9):
             raise ValueError('y must contain only 0 or 1')
     else:
         out = model(data.y, data.edge_index, mask=data.train_mask, edge_weight=data.edge_weight, post_step=my_post_step)
+    out = normalize_outputs_for_testing(out)
     return out
-
-
-def evaluate_label_propagation(dataset: GenericPhyloDataset, num_layers=3, alpha=0.9):
-    probs = propagate_labels(dataset, num_layers=num_layers, alpha=alpha)
-
-    test_acc, b_score = test_binary(probs, dataset.data)
-    print(f'Test Accuracy: {test_acc:.4f}')
-    print(f'Test Brier: {b_score:.4f}')
 
 
 def main():
@@ -95,6 +97,14 @@ def main():
     )
     data = dataset.data
     print(data.original_max_edge_length)
+
+    def evaluate_label_propagation(dataset: GenericPhyloDataset, num_layers=3, alpha=0.9):
+        probs = propagate_labels(dataset, num_layers=num_layers, alpha=alpha)
+
+        test_acc, b_score = test_binary_LP_outputs(probs, dataset.data)
+        print(f'Test Accuracy: {test_acc:.4f}')
+        print(f'Test Brier: {b_score:.4f}')
+
     # evaluate_label_propagation(dataset, num_layers=1)
     evaluate_label_propagation(dataset, alpha=0.2)
     evaluate_label_propagation(dataset, num_layers=10)

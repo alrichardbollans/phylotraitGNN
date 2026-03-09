@@ -3,7 +3,6 @@ import os
 import unittest
 
 import torch
-import torch.nn.functional as F
 from phylotraitGNN.GNN_models.GNN_node_classifier import GCN, train_gcn_model
 from torch_geometric.data import Data
 
@@ -29,7 +28,6 @@ class TestGCN(unittest.TestCase):
         self.data = Data(x=x, edge_index=edge_index, y=y, train_mask=train_mask, test_mask=test_mask)
         self.dataset = type("MockDataset", (object,), {"num_features": num_features, "num_classes": num_classes})
 
-
     def for_model_outputs(self, out_, dataset):
         data = dataset.data
 
@@ -42,12 +40,13 @@ class TestGCN(unittest.TestCase):
 
         self.assertEqual(out_.shape, (data.x.shape[0], dataset.num_classes))
 
-        probs = F.softmax(out_, dim=1)  # Convert logits to probabilities.
+        probs = out_
         # Add assertion that values in probs >0 and <1
         self.assertTrue(torch.all(probs >= 0.0) and torch.all(probs <= 1.0))
 
         # Add assertion that rows in pred proba add up to 1
         self.assertAlmostEqual(probs.sum(dim=1).max().item(), 1.0, places=6)
+
     def for_a_dataset_and_model(self, dataset, model):
 
         data = dataset.data
@@ -74,7 +73,6 @@ class TestGCN(unittest.TestCase):
             assert not torch.allclose(out_, out_without), "Model outputs are unchanged by edge_attr!"
             assert not torch.allclose(out_, out_with_none), "Model outputs are unchanged by edge_attr!"
 
-
     def test_Newick_with_no_features(self):
         dataset = NewickDataset(
             newick_tree_path='../../parsing_tree_data/unittest_data/continuous/tree.tre',
@@ -88,7 +86,6 @@ class TestGCN(unittest.TestCase):
             self.for_model_outputs(propagate_labels(dataset), dataset)
         except AssertionError:
             print("label propagation only works for discrete labels")
-
 
 
 if __name__ == "__main__":

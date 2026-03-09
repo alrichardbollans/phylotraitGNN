@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.nn import GATv2Conv
 
-from phylotraitGNN.GNN_models import test_binary
+from phylotraitGNN.GNN_models import test_binary_GNN_outputs
 from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset
 
 
@@ -38,9 +38,10 @@ class GCN(torch.nn.Module):
     def test(self, data):
         self.eval()
         out_ = self(data.x, data.edge_index, edge_attr=data.edge_weight)
-        test_acc, b_score = test_binary(out_, data)
+        test_acc, b_score = test_binary_GNN_outputs(out_, data)
 
         return test_acc, b_score
+
 
 def train_gcn_model(model, data):
     loss_function = torch.nn.CrossEntropyLoss()
@@ -51,6 +52,7 @@ def train_gcn_model(model, data):
     for epoch in range(1, 100):
         loss = model.train_step(data, optimizer, loss_function)
         print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}')
+
 
 def main():
     dataset = DistanceMatrixDataset(

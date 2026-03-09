@@ -1,14 +1,9 @@
 from sklearn.metrics import brier_score_loss
-import torch.nn.functional as F
 
 
-def test_binary_GNN_outputs(out_, data, scorer=None):
-    test_predictions = out_[data.test_mask]
-    # check that test predictions are logits, not already softmaxed
-    assert not (test_predictions.sum(dim=1) == 1).all()
+def test_binary_LP_outputs(out_, data, scorer=None):
+    probs = out_[data.test_mask]
 
-    probs = F.softmax(test_predictions, dim=1)  # Convert logits to probabilities.
-    raise NotImplementedError('Check model output for logits, not probs.')
     # assert the row sums are 1
     assert (probs.sum(dim=1) < 1.001).all()
     assert (probs.sum(dim=1) > 0.999).all()
@@ -27,7 +22,3 @@ def test_binary_GNN_outputs(out_, data, scorer=None):
             pred_proba.detach().cpu().numpy()
         )
     return test_acc, b_score
-
-
-if __name__ == '__main__':
-    main()
