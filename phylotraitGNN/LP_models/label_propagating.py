@@ -1,5 +1,6 @@
 import torch
 from torch_geometric.nn import LabelPropagation
+from torch_geometric.transforms import AddSelfLoops, ToUndirected
 
 from phylotraitGNN.LP_models import test_binary_LP_outputs
 from phylotraitGNN.parsing_tree_data import GenericPhyloDataset, DistanceMatrixDataset
@@ -68,6 +69,13 @@ def propagate_labels(dataset: GenericPhyloDataset, num_layers=3, alpha=0.9):
     """
     assert dataset.binary_or_continuous == 'binary'  # label propagation only works for discrete labels
     data = dataset.data
+
+    # Check data has self loops, following Zhu 2002
+    with_self_loops = AddSelfLoops(fill_value=1)(data)
+    with_self_loops = ToUndirected(reduce='mean')(with_self_loops)
+
+    assert torch.equal(with_self_loops.edge_index, data.edge_index)
+
     model = LabelPropagation(num_layers=num_layers, alpha=alpha)
     # Where y values are all the same, instead of training the model, out should be a tensor with two columns, one for each class.
     # Values in the column denoting the class that appears in y should be 1, and all other values should be 0.

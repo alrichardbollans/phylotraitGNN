@@ -50,7 +50,7 @@ class TestGCN(unittest.TestCase):
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary_no_features/mcar_values.csv',
             ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary_no_features/ground_truth.csv',
             target_name='trait_ARD',
-            binary_or_continuous='binary',
+            binary_or_continuous='binary', add_self_loops=True
 
         )
         self.for_model_outputs(propagate_labels(dataset), dataset)
@@ -62,7 +62,7 @@ class TestGCN(unittest.TestCase):
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary_no_features/mcar_values.csv',
             ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary_no_features/ground_truth.csv',
             target_name='trait_ARD',
-            binary_or_continuous='binary',
+            binary_or_continuous='binary', add_self_loops=True
 
         )
         self.for_model_outputs(propagate_labels(dataset), dataset)
@@ -72,7 +72,7 @@ class TestGCN(unittest.TestCase):
             newick_tree_path='../../parsing_tree_data/unittest_data/binary_no_features/tree.tre',
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary_no_features/mcar_values.csv',
             target_name='trait_ARD',
-            binary_or_continuous='binary',
+            binary_or_continuous='binary', add_self_loops=True
 
         )
         self.for_model_outputs(propagate_labels(dataset), dataset)
@@ -82,7 +82,7 @@ class TestGCN(unittest.TestCase):
             tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary_no_features/tree_distances.csv',
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary_no_features/mcar_values.csv',
             target_name='trait_ARD',
-            binary_or_continuous='binary',
+            binary_or_continuous='binary', add_self_loops=True
 
         )
         self.for_model_outputs(propagate_labels(dataset), dataset)
@@ -93,7 +93,7 @@ class TestGCN(unittest.TestCase):
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary_no_features/mcar_values.csv',
             ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary_no_features/ground_truth.csv',
             target_name='trait_ARD',
-            binary_or_continuous='binary',
+            binary_or_continuous='binary', add_self_loops=True
 
         )
         # make y a Tensor of shape y with all values the same
@@ -102,13 +102,36 @@ class TestGCN(unittest.TestCase):
         assert output.shape == torch.Size([100, 2])
         test_binary_LP_outputs(output, dataset.data)
 
-    def test_specific_values(self):
+    def test_self_looping(self):
+        dataset = NewickDataset(
+            newick_tree_path='unittest_data/binary_no_features_simple/tree.tre',
+            feature_csv_path_with_missing_target='unittest_data/binary_no_features_simple/mcar_values.csv',
+            target_name='trait_ARD',
+            binary_or_continuous='binary',
+            sigma=1, add_self_loops=True
+
+        )
+
+        output = propagate_labels(dataset, alpha=0, num_layers=3)
+
         dataset = NewickDataset(
             newick_tree_path='unittest_data/binary_no_features_simple/tree.tre',
             feature_csv_path_with_missing_target='unittest_data/binary_no_features_simple/mcar_values.csv',
             target_name='trait_ARD',
             binary_or_continuous='binary',
             sigma=1
+
+        )
+
+        self.assertRaises(AssertionError, propagate_labels, dataset, alpha=0, num_layers=3)
+
+    def test_specific_values(self):
+        dataset = NewickDataset(
+            newick_tree_path='unittest_data/binary_no_features_simple/tree.tre',
+            feature_csv_path_with_missing_target='unittest_data/binary_no_features_simple/mcar_values.csv',
+            target_name='trait_ARD',
+            binary_or_continuous='binary',
+            sigma=1, add_self_loops=True
 
         )
         tip_mask = dataset.data.train_mask
@@ -119,15 +142,18 @@ class TestGCN(unittest.TestCase):
         probs = output[tip_mask][:, 1]  # Probability for class 1
         # assert that two tensors are equal
         assert torch.equal(dataset.data.y[tip_mask], probs)
-
-        # Case with alpha=1
+        #
+        # # Case with alpha=1
         output = propagate_labels(dataset, alpha=1, num_layers=1)
         node_outputs = output[node_mask]
         assert torch.equal(node_outputs, torch.tensor([[0, 1], [1, 0], [0, 1]]))
         assert torch.equal(dataset.data.y[tip_mask], output[tip_mask][:,
                                                      1])  # This will break because of https://github.com/pyg-team/pytorch_geometric/issues/10627#issuecomment-4018763551
+        #
+        # raise NotImplementedError('Add tests for num_layers = 2 etc')
 
-        raise NotImplementedError('Add tests for num_layers = 2 etc')
+        output = propagate_labels(dataset, alpha=0.8, num_layers=2)
+        print(output)
 
 
 if __name__ == "__main__":

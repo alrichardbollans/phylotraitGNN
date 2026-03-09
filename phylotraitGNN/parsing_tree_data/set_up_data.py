@@ -15,7 +15,7 @@ class GenericPhyloDataset(Dataset):
                  target_name: str,
                  binary_or_continuous: str,
                  ground_truth_csv_path: str = None,
-                 sigma: float = None, transform: Optional[Callable] = None):
+                 sigma: float = None, transform: Optional[Callable] = None, add_self_loops:bool = False):
 
         self.binary_or_continuous = binary_or_continuous
         self.target_name = target_name
@@ -30,6 +30,7 @@ class GenericPhyloDataset(Dataset):
             self.ground_truth_df = None
 
         self.sigma = sigma
+        self.add_self_loops = add_self_loops
         super().__init__(transform=transform)
 
     @staticmethod
@@ -63,6 +64,7 @@ class GenericPhyloDataset(Dataset):
         # Following Xiaojin Zhu and Zoubin Ghahramani, Learning from Labeled and Unlabeled Data with Label Propagation (Carnegie Mellon University, Pittsburgh, 2002).
         # Set edge weights to e^(-d^2/sigma^2)
         edge_weight = torch.exp(-(edge_length ** 2) / (sigma ** 2))
+        assert (torch.all(edge_weight >= 0.0) and torch.all(edge_weight <= 1.0))
 
         return edge_weight, original_edge_std
 
@@ -86,11 +88,10 @@ class GenericPhyloDataset(Dataset):
         data.edge_length = edge_length
 
         if add_self_loops:
+            assert edge_weight.max() <= 1
             data = AddSelfLoops(fill_value=1)(data)
-            raise NotImplementedError("Need to check data.values are preserved correctly after adding self loops.")
 
-        ToUndirected_transform = ToUndirected(reduce='mean')
-        data = ToUndirected_transform(data)
+        data = ToUndirected(reduce='mean')(data)
 
         return data
 
@@ -212,7 +213,7 @@ class DistanceMatrixDataset(GenericPhyloDataset):
                  threshold: Optional[float] = None,
                  k_nearest: Optional[int] = None,
                  ground_truth_csv_path: str = None,
-                 sigma: float = None, ):
+                 sigma: float = None, add_self_loops:bool = False ):
         """
         Args:
             tree_distance_csv_path: Path to CSV file with distance matrix. This is created in R with tree_distances = ape::cophenetic.phylo(out_tree) and written to a file with  write.csv.
@@ -235,11 +236,13 @@ class DistanceMatrixDataset(GenericPhyloDataset):
         self.node_names = self.tree_distance_df.index.tolist()
         self.dist_matrix = self.tree_distance_df.values
 
+        if add_self_loops:
+            print("Might be unusual to add self loops to distance matrix dataset, but this is possible.")
         super().__init__(feature_csv_path_with_missing_target,
                          target_name,
                          binary_or_continuous,
                          ground_truth_csv_path=ground_truth_csv_path,
-                         sigma=sigma)
+                         sigma=sigma, add_self_loops = add_self_loops)
 
         # Load the data
         self.data = self._process()
@@ -300,7 +303,7 @@ class DistanceMatrixDataset(GenericPhyloDataset):
             edge_index=edge_index,
             # edge_attr=edge_attr # Feature propagation transform breaks with edge attributes, so add them back in before the undirected transform.
         )
-        data = self.transform_data(data, edge_length=edge_attr, sigma=self.sigma)
+        data = self.transform_data(data, edge_length=edge_attr, sigma=self.sigma, add_self_loops=self.add_self_loops)
 
         return data
 
@@ -314,7 +317,7 @@ class NewickDataset(GenericPhyloDataset):
                  target_name: str,
                  binary_or_continuous: str,
                  ground_truth_csv_path: str = None,
-                 sigma: float = None):
+                 sigma: float = None, add_self_loops:bool = False):
         """
         Args:
             newick_tree_path: Path to CSV file with newick tree.
@@ -339,7 +342,7 @@ class NewickDataset(GenericPhyloDataset):
                          target_name,
                          binary_or_continuous,
                          ground_truth_csv_path=ground_truth_csv_path,
-                         sigma=sigma)
+                         sigma=sigma,add_self_loops=add_self_loops)
 
         # Load the data
         self.data = self._process()
@@ -375,7 +378,7 @@ class NewickDataset(GenericPhyloDataset):
             edge_index=pyg_data.edge_index,
             # edge_attr=edge_attr # Feature propagation transform breaks with edge attributes, so add them back in before the undirected transform.
         )
-        data = self.transform_data(data, edge_length=edge_attr, sigma=self.sigma)
+        data = self.transform_data(data, edge_length=edge_attr, sigma=self.sigma, add_self_loops=self.add_self_loops)
 
         return data
 
