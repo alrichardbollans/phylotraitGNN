@@ -85,7 +85,6 @@ class GenericPhyloDataset(Dataset):
         edge_weight, original_edge_std = GenericPhyloDataset.get_edge_weights(edge_length, sigma)
         data.original_edge_std = original_edge_std
         data.edge_weight = edge_weight
-        data.edge_length = edge_length
 
         if add_self_loops:
             assert edge_weight.max() <= 1

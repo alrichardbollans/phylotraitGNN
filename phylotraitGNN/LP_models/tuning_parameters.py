@@ -68,13 +68,18 @@ def find_LP_hyperparameters(dataset: GenericPhyloDataset, verbose: int = 2, init
 
         cross_val_scores = []
         for crossval_dataset in cross_val_datasets:
+            original_edge_weight = crossval_dataset.data.edge_weight
             # Reassign edge weights using sigma_ratio
-            new_edge_weight, original_edge_std = crossval_dataset.get_edge_weights(crossval_dataset.data.edge_length, original_sigma * sigma_ratio)
+            new_sigma = original_sigma * sigma_ratio
+            new_edge_weight = crossval_dataset.data.edge_weight ** ((original_sigma**2)/(new_sigma**2))
             crossval_dataset.data.edge_weight = new_edge_weight
             probs = propagate_labels(crossval_dataset, num_layers=num_layers, alpha=alpha)
             test_acc, b_score = test_binary_LP_outputs(probs, crossval_dataset.data)
             # BayesianOptimization has no option to minimise, so we invert the brier score
             cross_val_scores.append(1 - b_score)
+
+            # Reset edge weights
+            crossval_dataset.data.edge_weight = original_edge_weight
         mean_cv_score = np.mean(cross_val_scores)
 
         return mean_cv_score
@@ -107,7 +112,7 @@ def find_LP_hyperparameters(dataset: GenericPhyloDataset, verbose: int = 2, init
             f'and all information is being translated between nodes. ')
     if best_sigma_ratio > 9:
         print(
-            f'WARNING: high value of sigma {best_sigma_ratio}. This means most weights in the graph are close to 1. So all unlabelled points are predicted '
+            f'WARNING: high value of sigma {best_sigma}. This means most weights in the graph are close to 1 so all unlabelled points '
             f'are likely to have similar predictions.')
 
     return best_alpha, int(best_num_layers), float(best_sigma), best_sigma_ratio
@@ -119,7 +124,7 @@ def main():
         feature_csv_path_with_missing_target='../parsing_tree_data/unittest_data/binary/mcar_values.csv',
         ground_truth_csv_path='../parsing_tree_data/unittest_data/binary/ground_truth.csv',
         target_name='trait_BM_trend_scaled',
-        binary_or_continuous='binary',
+        binary_or_continuous='binary', add_self_loops=True,
 
     )
 
