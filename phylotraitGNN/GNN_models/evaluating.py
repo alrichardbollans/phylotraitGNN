@@ -8,7 +8,6 @@ def test_binary_GNN_outputs(out_, data, scorer=None):
     assert not (test_predictions.sum(dim=1) == 1).all()
 
     probs = F.softmax(test_predictions, dim=1)  # Convert logits to probabilities.
-    raise NotImplementedError('Check model output for logits, not probs.')
     # assert the row sums are 1
     assert (probs.sum(dim=1) < 1.001).all()
     assert (probs.sum(dim=1) > 0.999).all()

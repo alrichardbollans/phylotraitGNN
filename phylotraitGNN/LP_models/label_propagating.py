@@ -7,6 +7,8 @@ from phylotraitGNN.parsing_tree_data import GenericPhyloDataset, DistanceMatrixD
 
 
 def my_post_step(out):
+    ### Following Zhu 2002, row normalise the outputs after each propagation step.
+
     # The aggregation step in Label Propagation sums over neighbouring nodes, which in some cases blows up the estimates (which means alpha loses its effectiveness).
     # This fixes that case while also fixing issues with the default clamping process. See: https://github.com/pyg-team/pytorch_geometric/issues/10627
     # This function won't inflate minimal evidence e.g. a node with [0.1,0.2] will stay the same.

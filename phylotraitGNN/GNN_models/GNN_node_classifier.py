@@ -23,7 +23,7 @@ class GCN(torch.nn.Module):
         x = self.conv1(x, edge_index, edge_attr=edge_attr)
         x = x.relu()
         x = F.dropout(x, p=0.5, training=self.training)
-        x = self.conv2(x, edge_index, edge_attr=edge_attr)
+        x = self.conv2(x, edge_index, edge_attr=edge_attr) # There typically isn't a separate, fully-connected (linear) layer after the last GNN layer, because the final convolution is trained to map embeddings directly to class logits
         return x
 
     def train_step(self, data, optimizer, loss_function):

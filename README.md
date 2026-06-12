@@ -1,6 +1,10 @@
 # Phylogenetic Graph Neural Networks for Trait Predictions
 
-This package provides methods for reading phylogenetic tree data and applying Graph Neural Networks to predict properties of taxa.
+These packages are currently under development.
+
+This repository includes methods for reading phylogenetic tree data and applying Graph Neural Networks to predict properties of taxa.
+These currently include label propagation methods and Graph Convolutional Networks. The aim is to include efficient model selection and hyperparameter
+tuning methods to allow users to easily import trait and phylogenetic data and start making predictions.
 
 ## Installation
 

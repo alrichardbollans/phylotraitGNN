@@ -54,6 +54,14 @@ def get_datasets_for_cross_validation(dataset: GenericPhyloDataset, number_of_sp
 
 
 def find_LP_hyperparameters(dataset: GenericPhyloDataset, verbose: int = 2, init_points=10, n_iter=50):
+    '''
+    Use bayesian optimization to find the best hyperparameters for label propagation.
+
+    Bayesian Optimization is a method for finding global optima of black-box functions. In the case where the function is computationally expensive
+    (as in doing cross-validation), Bayesian Optimization is useful as it selects new hyperparameter values to try based on previous ones,
+     thus avoiding many unnecessary evaluations.
+    '''
+
     original_sigma = dataset.data.original_edge_std
     assert dataset.binary_or_continuous == 'binary'
 
@@ -85,6 +93,8 @@ def find_LP_hyperparameters(dataset: GenericPhyloDataset, verbose: int = 2, init
         return mean_cv_score
 
     # Bounded region of parameter space
+    # Using categorical values for num_layers:
+    # Eduardo C. Garrido-Merchán and Daniel Hernández-Lobato,(March 2020): 20–35, https://doi.org/10.1016/j.neucom.2019.11.004.
     pbounds = {'num_layers': (1, 50, int),
                'alpha': (0, 1.0),  #
                'sigma_ratio': (0.1, 10)}
