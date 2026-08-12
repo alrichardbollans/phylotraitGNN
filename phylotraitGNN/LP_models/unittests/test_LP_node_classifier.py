@@ -3,8 +3,9 @@ import unittest
 import torch
 
 from torch_geometric.data import Data
+from torch_geometric.nn import LabelPropagation
 
-from phylotraitGNN.LP_models import propagate_labels, test_binary_LP_outputs
+from phylotraitGNN.LP_models import propagate_labels, test_binary_LP_outputs, my_post_step
 from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset
 
 
@@ -155,6 +156,26 @@ class TestGCN(unittest.TestCase):
         output = propagate_labels(dataset, alpha=0.8, num_layers=2)
         print(output)
 
+    def test_labels_preserved_after_propagation(self):
+        # Test that labeled node values are preserved after propagation:
+        y2 = torch.tensor([0, 0, 0, 0, 0, 0, 0, 1, 1])
+        edge_index2 = torch.tensor(
+            [[0, 1, 2, 3, 4, 5, 6, 7, 8], [0, 0, 0, 0, 0, 0, 0, 0, 0]])
+        mask2 = torch.tensor(
+            [False, True, True, True, True, True, True, True, True])
+        edge_weight2 = torch.ones(9)
+        model2 = LabelPropagation(num_layers=2, alpha=0.9)
+        from torch_geometric.utils import one_hot
+        y2_oh = one_hot(y2)
+        def post_step_with_mask_and_y(model_out):
+            return my_post_step(model_out, mask2, y2_oh)
+
+        out2 = model2(y=y2, edge_index=edge_index2, mask=mask2,
+                      edge_weight=edge_weight2, post_step=post_step_with_mask_and_y)
+        # Labeled nodes must retain their original one-hot values
+
+        assert torch.allclose(out2[mask2], out2[mask2])
+        assert torch.allclose(out2[mask2], y2_oh[mask2].float())
 
 if __name__ == "__main__":
     unittest.main()

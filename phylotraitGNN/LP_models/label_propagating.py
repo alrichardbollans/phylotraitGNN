@@ -6,28 +6,46 @@ from phylotraitGNN.LP_models import test_binary_LP_outputs
 from phylotraitGNN.parsing_tree_data import GenericPhyloDataset, DistanceMatrixDataset
 
 
-def my_post_step(out):
+def my_post_step(out, mask, y_ohe):
     ### Following Zhu 2002, row normalise the outputs after each propagation step.
 
+    # This needs using with a wrapper to provide mask and y_ohe, until this is fixed in torch_geometric:
+    # from torch_geometric.utils import one_hot
+    #         y2_oh = one_hot(y2)
+    #         def post_step_with_mask_and_y(model_out):
+    #             return my_post_step(model_out, mask2, y2_oh)
+
     # The aggregation step in Label Propagation sums over neighbouring nodes, which in some cases blows up the estimates (which means alpha loses its effectiveness).
+    # This step mitigates this by normalising the output of each node, so that the maximum sum of the output of each node is 1.
+    # It also clamps the output of the training nodes to the ground truth labels.
     # This fixes that case while also fixing issues with the default clamping process. See: https://github.com/pyg-team/pytorch_geometric/issues/10627
     # This function won't inflate minimal evidence e.g. a node with [0.1,0.2] will stay the same.
     # But where  values sum>1 e.g. [0.66,1.32] will be standardised and get converted to [0.33,0.66]
 
     # where the sum of the values in a row is greater than 1, divide values in the row by the sum of the row.
     # out: Tensor, shape [num_nodes, num_classes]
+
     row_sums = out.sum(dim=1, keepdim=True) + 1e-9  # Avoid division by zero
 
     # Normalized output
     normalized_out = out / row_sums
 
     # Where mask is True, take normalized_out; otherwise keep original out
-    mask = (row_sums > 1)
-    clamped_out = torch.where(mask, normalized_out, out)
+    mask_for_greater_than_1 = (row_sums > 1)
+    clamped_out = torch.where(mask_for_greater_than_1, normalized_out, out)
+
+    clamped_out[mask] = y_ohe[mask]
+
     return clamped_out
 
 
 def normalize_outputs_for_testing(out_):
+    '''
+    Sets sums for the rows of out_ to 1. Differs in the post_step function, which is more about clamping
+
+
+    '''
+
     row_sums = out_.sum(dim=1, keepdim=True)
 
     # Normalized output
@@ -41,10 +59,7 @@ def normalize_outputs_for_testing(out_):
 
 def propagate_labels(dataset: GenericPhyloDataset, num_layers=3, alpha=0.9):
     """
-    Propagates labels in a dataset using label propagation. This function applies a label
-    propagation model to discrete binary labels in the provided dataset. It is particularly
-    suitable for datasets with graph-like structures, where nodes are associated with
-    labels and connections (edges) influence label propagation.
+    Propagates labels in a dataset using label propagation.
 
     The dataset should have no self-loops and edges should be symmetric (Zhou, 2003).
 
@@ -91,7 +106,14 @@ def propagate_labels(dataset: GenericPhyloDataset, num_layers=3, alpha=0.9):
         else:
             raise ValueError('y must contain only 0 or 1')
     else:
-        out = model(data.y, data.edge_index, mask=data.train_mask, edge_weight=data.edge_weight, post_step=my_post_step)
+
+        from torch_geometric.utils import one_hot
+        y2_oh = one_hot(data.y)
+
+        def post_step_with_mask_and_y(model_out):
+            return my_post_step(model_out, data.train_mask, y2_oh)
+
+        out = model(data.y, data.edge_index, mask=data.train_mask, edge_weight=data.edge_weight, post_step=post_step_with_mask_and_y)
     out = normalize_outputs_for_testing(out)
     return out
 
