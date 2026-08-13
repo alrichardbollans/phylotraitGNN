@@ -148,21 +148,21 @@ class TestGCN(unittest.TestCase):
             sigma=1, add_self_loops=True
 
         )
-        tip_mask = dataset.data.train_mask
-        node_mask = ~tip_mask
+        train_mask = dataset.data.train_mask
+        node_mask = (~train_mask & ~dataset.data.test_mask)
 
         # Case with alpha=0
         output = propagate_labels(dataset, alpha=0, num_layers=3)
-        probs = output[tip_mask][:, 1]  # Probability for class 1
+        probs = output[train_mask][:, 1]  # Probability for class 1
         # assert that two tensors are equal
-        assert torch.equal(dataset.data.y[tip_mask], probs)
+        assert torch.equal(dataset.data.y[train_mask], probs)
         #
         # # Case with alpha=1
         output = propagate_labels(dataset, alpha=1, num_layers=1)
         node_outputs = output[node_mask]
-        assert torch.equal(node_outputs, torch.tensor([[0, 1], [1, 0], [0, 1]]))
-        assert torch.equal(dataset.data.y[tip_mask], output[tip_mask][:,
-                                                     1])  # This will break because of https://github.com/pyg-team/pytorch_geometric/issues/10627#issuecomment-4018763551
+        assert torch.equal(node_outputs, torch.tensor([[0.5, 0.5], [1, 0], [0, 1]]))
+        assert torch.equal(dataset.data.y[train_mask], output[train_mask][:,
+                                                     1])  # This used to break because of https://github.com/pyg-team/pytorch_geometric/issues/10627#issuecomment-4018763551
         #
         # raise NotImplementedError('Add tests for num_layers = 2 etc')
 

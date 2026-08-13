@@ -111,6 +111,8 @@ class GenericPhyloDataset(Dataset):
             assert self.num_classes <= 2
 
         # print(data.train_mask.sum(), data.test_mask.sum())
+        assert (self.data.train_mask).sum()>0, "No training nodes found. feature_csv_path_with_missing_target is expected to have missing values for test nodes, and have some training nodes with values."
+        assert (self.data.test_mask).sum()>0, "No test nodes found. feature_csv_path_with_missing_target is expected to have missing values for test nodes."
         assert (self.data.train_mask & self.data.test_mask).sum() == 0  # should be 0
 
         # No train or test nodes should have missing target values

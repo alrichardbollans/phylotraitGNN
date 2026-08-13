@@ -40,7 +40,7 @@ def get_datasets_for_cross_validation(dataset: GenericPhyloDataset, number_of_sp
         # Deepcopy dataset and data
         ds_copy = deepcopy(dataset)
         # Reset masks
-        print('Note that nodes in initial training mask will have been used for feature propagation when setting up data.')
+        # print('Note that nodes in initial training mask will have been used for feature propagation when setting up data.')
         ds_copy.data.train_mask = torch.zeros_like(data.train_mask, dtype=torch.bool)
         ds_copy.data.train_mask[train_indices] = True
 

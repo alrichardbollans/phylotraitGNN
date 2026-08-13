@@ -86,6 +86,17 @@ class TestNewickDataset(unittest.TestCase):
 
         self.assertEqual(len(data.edge_index[0]), 396)  # Undirected graph, i.e.
 
+    def test_self_looping(self):
+        dataset = NewickDataset(
+            newick_tree_path=self.newick_tree_path_continuous,
+            feature_csv_path_with_missing_target=self.feature_csv_path_with_missing_target_continuous,
+            ground_truth_csv_path=self.ground_truth_csv_path_continuous,
+            target_name=self.target_name_cont,
+            binary_or_continuous="continuous",
+            sigma=1, add_self_loops=True
+
+        )
+
     def test_no_ground_truth(self):
         dataset = NewickDataset(
             newick_tree_path=self.newick_tree_path,
