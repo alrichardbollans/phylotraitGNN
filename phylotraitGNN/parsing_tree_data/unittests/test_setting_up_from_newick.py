@@ -118,6 +118,35 @@ class TestNewickDataset(unittest.TestCase):
                 binary_or_continuous="invalid"
             )
 
+    def test_invalid_validation_nodes(self):
+        with self.assertRaises(ValueError):
+            NewickDataset(
+                newick_tree_path=self.newick_tree_path,
+                feature_csv_path_with_missing_target=self.feature_csv_path_with_missing_target,
+                ground_truth_csv_path=self.ground_truth_csv_path,
+                target_name=self.target_name,
+                binary_or_continuous="binary",
+                validation_nodes=['ppppp', 'notadnode']
+            )
+
+    def test_including_validation_nodes(self):
+        nw_dataset = NewickDataset(
+            newick_tree_path=self.newick_tree_path,
+            feature_csv_path_with_missing_target=self.feature_csv_path_with_missing_target,
+            ground_truth_csv_path=self.ground_truth_csv_path,
+            target_name=self.target_name,
+            binary_or_continuous="binary",
+            validation_nodes=['t43', 't100', 't29']
+        )
+
+        assert (nw_dataset.data.val_mask).sum() == 3
+        # Ensure node_names is a numpy array for boolean indexing support
+        node_names = np.array(nw_dataset.node_names)
+        val_node_names = node_names[nw_dataset.data.val_mask.cpu().numpy()]  # Convert mask to numpy if needed
+        # Now test that the selected names match what is expected (order might matter)
+        expected_names = np.array(['t43', 't100', 't29'])
+        assert np.array_equal(val_node_names, expected_names)
+
 
 if __name__ == "__main__":
     unittest.main()

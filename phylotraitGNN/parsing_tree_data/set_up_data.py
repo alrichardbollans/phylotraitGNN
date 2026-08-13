@@ -15,8 +15,30 @@ class GenericPhyloDataset(Dataset):
                  target_name: str,
                  binary_or_continuous: str,
                  ground_truth_csv_path: str = None,
-                 sigma: float = None, transform: Optional[Callable] = None, add_self_loops: bool = False):
+                 sigma: float = None, transform: Optional[Callable] = None, add_self_loops: bool = False, validation_nodes: Optional[list] = None):
+        """
+        Initializes an instance that manages a dataset with potential missing target values and ground truth data
+        (optional). It supports handling both binary or continuous target variables. Additional functionalities
+        such as data transformation, adding self-loops, and handling validation nodes are configurable through
+        provided parameters.
 
+        Attributes:
+            binary_or_continuous (str): A string indicating whether the target variable is "binary" or "continuous".
+                This dictates the type of analysis that can be performed.
+            target_name (str): The name of the target variable in the dataset.
+            feature_csv_path_with_missing_target (str): Path to the CSV file containing features along with a target
+                variable that may have missing values.
+            feature_with_missing_target_df (pd.DataFrame): A DataFrame holding the feature and target values from the
+                CSV file provided via 'feature_csv_path_with_missing_target'. The target values may have missing entries.
+            ground_truth_csv_path (str, optional): Path to the optional CSV file containing complete ground truth data
+                of the target variable for validation purposes.
+            ground_truth_df (pd.DataFrame or None): A DataFrame holding the ground truth target data if
+                'ground_truth_csv_path' is provided, or None if it is not supplied.
+            sigma (float, optional): A float value used for regularization or smoothing in algorithms where applicable.
+            add_self_loops (bool): A boolean flag indicating whether self-loops should be added in graph-based analysis.
+            validation_nodes (list, optional): A list of nodes (or indices) designated for validating the model's
+                predictions or procedures.
+        """
         self.binary_or_continuous = binary_or_continuous
         self.target_name = target_name
 
@@ -31,6 +53,13 @@ class GenericPhyloDataset(Dataset):
 
         self.sigma = sigma
         self.add_self_loops = add_self_loops
+        self.validation_nodes = validation_nodes
+
+        if self.validation_nodes is not None:
+            for v in self.validation_nodes:
+                if v not in self.node_names:
+                    raise ValueError(f"Validation node {v} not found in tree.")
+
         super().__init__(transform=transform)
 
     @staticmethod
@@ -111,9 +140,13 @@ class GenericPhyloDataset(Dataset):
             assert self.num_classes <= 2
 
         # print(data.train_mask.sum(), data.test_mask.sum())
-        assert (self.data.train_mask).sum()>0, "No training nodes found. feature_csv_path_with_missing_target is expected to have missing values for test nodes, and have some training nodes with values."
-        assert (self.data.test_mask).sum()>0, "No test nodes found. feature_csv_path_with_missing_target is expected to have missing values for test nodes."
+        assert (
+                   self.data.train_mask).sum() > 0, "No training nodes found. feature_csv_path_with_missing_target is expected to have missing values for test nodes, and have some training nodes with values."
+        assert (
+                   self.data.test_mask).sum() > 0, "No test nodes found. feature_csv_path_with_missing_target is expected to have missing values for test nodes."
         assert (self.data.train_mask & self.data.test_mask).sum() == 0  # should be 0
+        assert (self.data.val_mask & self.data.test_mask).sum() == 0  # should be 0
+        assert (self.data.train_mask & self.data.val_mask).sum() == 0  # should be 0
 
         # No train or test nodes should have missing target values
         # Also check for the placeholder nan value
@@ -129,6 +162,7 @@ class GenericPhyloDataset(Dataset):
         assert ~torch.any(train_y == nan_value)
 
     def get_features_and_masks(self):
+
         # Create train/val/test masks from missing target values
         y_with_missing_target_df = self.feature_with_missing_target_df[[self.target_name]]
 
@@ -180,11 +214,23 @@ class GenericPhyloDataset(Dataset):
 
         y_with_missing_target_df = y_with_missing_target_df.loc[self.node_names]  # Align with node names
 
+        if self.validation_nodes is not None:
+            # Make proportion of train_mask into a val_mask
+            val_mask = torch.tensor(
+                np.where((y_with_missing_target_df.index.isin(self.validation_nodes)),
+                         True, False), dtype=torch.bool)
+        else:
+            # Make val mask a torch.tensor of False which is the same length as X and y
+            val_mask = torch.zeros(len(X), dtype=torch.bool)
+
         train_mask = torch.tensor(
-            np.where((y_with_missing_target_df[self.target_name].isna() | y_with_missing_target_df.index.isin(node_target_df.index)),
+            np.where((y_with_missing_target_df[self.target_name].isna() | y_with_missing_target_df.index.isin(
+                node_target_df.index) | val_mask.cpu().numpy()),
                      False, True), dtype=torch.bool)
+
         test_mask = torch.tensor(
-            np.where((~y_with_missing_target_df[self.target_name].isna() | y_with_missing_target_df.index.isin(node_target_df.index)),
+            np.where((~y_with_missing_target_df[self.target_name].isna() | y_with_missing_target_df.index.isin(
+                node_target_df.index) | val_mask.cpu().numpy()),
                      False, True), dtype=torch.bool)
         if self.binary_or_continuous == 'continuous':
             y_dtype = torch.float
@@ -194,7 +240,7 @@ class GenericPhyloDataset(Dataset):
         else:
             raise ValueError(f"binary_or_continuous must be 'continuous' or 'binary', not {self.binary_or_continuous}")
 
-        return X, y, train_mask, test_mask, y_dtype
+        return X, y, train_mask, val_mask, test_mask, y_dtype
 
     def len(self):
         return 1  # Single graph dataset
@@ -221,16 +267,25 @@ class DistanceMatrixDataset(GenericPhyloDataset):
                  threshold: Optional[float] = None,
                  k_nearest: Optional[int] = None,
                  ground_truth_csv_path: str = None,
-                 sigma: float = None, add_self_loops: bool = False):
+                 sigma: float = None, add_self_loops: bool = False, validation_nodes: Optional[list] = None):
         """
-        Args:
-            tree_distance_csv_path: Path to CSV file with distance matrix. This is created in R with tree_distances = ape::cophenetic.phylo(out_tree) and written to a file with  write.csv.
-            feature_csv_path_with_missing_target: Path to CSV file with node features. Columns should be feature names and rows should be node names. The target column should be missing for test nodes.
-            ground_truth_csv_path: Path to CSV file with node features. Columns should be feature names and rows should be node names. Should include all values for training and test nodes.
-            target_name: Name of target column in feature CSV file.
-            binary_or_continuous: Target is binary or continuous.
-            threshold: Distance threshold for creating edges (edges for distances <= threshold)
-            k_nearest: Create edges to k-nearest neighbors per node
+        Initializes the instance by setting attributes and reading required CSV files, while validating the
+        combination of parameters. Implements the base class initialization and processes required data.
+
+        Attributes:
+            tree_distance_csv_path (str): The path to the CSV file containing tree distances.
+            feature_csv_path_with_missing_target (str): The path to the feature CSV file with possible missing target values.
+            target_name (str): The name of the target feature.
+            binary_or_continuous (str): Specifies whether the target feature is binary or continuous.
+            threshold (Optional[float]): The threshold value for pruning or filtering, mutually exclusive with k_nearest.
+            k_nearest (Optional[int]): The number of nearest nodes to consider, mutually exclusive with threshold.
+            ground_truth_csv_path (Optional[str]): The path to the ground truth CSV file, if applicable.
+            sigma (Optional[float]): A float value used for specific computations. Its default value is None.
+            add_self_loops (bool): Indicates whether to add self-loops to the distance matrix. Default is False.
+            validation_nodes (Optional[list]): A list of nodes that represent validation data, if provided.
+
+        Raises:
+            NotImplementedError: If both threshold and k_nearest are specified simultaneously.
         """
         self.tree_distance_csv_path = tree_distance_csv_path
         self.threshold = threshold
@@ -250,7 +305,7 @@ class DistanceMatrixDataset(GenericPhyloDataset):
                          target_name,
                          binary_or_continuous,
                          ground_truth_csv_path=ground_truth_csv_path,
-                         sigma=sigma, add_self_loops=add_self_loops)
+                         sigma=sigma, add_self_loops=add_self_loops, validation_nodes=validation_nodes)
 
         # Load the data
         self.data = self._process()
@@ -301,12 +356,13 @@ class DistanceMatrixDataset(GenericPhyloDataset):
                 dtype=torch.float
             ).view(-1, 1)
 
-        X, y, train_mask, test_mask, y_dtype = self.get_features_and_masks()
+        X, y, train_mask, val_mask, test_mask, y_dtype = self.get_features_and_masks()
 
         data = Data(
             x=torch.tensor(X, dtype=torch.float),
             y=torch.tensor(y, dtype=y_dtype),
             train_mask=train_mask,
+            val_mask=val_mask,
             test_mask=test_mask,
             edge_index=edge_index,
             # edge_attr=edge_attr # Feature propagation transform breaks with edge attributes, so add them back in before the undirected transform.
@@ -325,15 +381,36 @@ class NewickDataset(GenericPhyloDataset):
                  target_name: str,
                  binary_or_continuous: str,
                  ground_truth_csv_path: str = None,
-                 sigma: float = None, add_self_loops: bool = False):
+                 sigma: float = None, add_self_loops: bool = False, validation_nodes: Optional[list] = None):
         """
-        Args:
-            newick_tree_path: Path to CSV file with newick tree.
-            feature_csv_path_with_missing_target: Path to CSV file with node features. Columns should be feature names and rows should be node names. The target column should be missing for test nodes.
-            ground_truth_csv_path: Path to CSV file with node features. Columns should be feature names and rows should be node names. Should include all values for training and test nodes.
-            target_name: Name of target column in feature CSV file.
-            binary_or_continuous: Target is binary or continuous.
-            transform: PyTorch Geometric transforms which transform values stored in 'x'
+        Initializes an instance and validates the input data and tree structure.
+
+        Attributes:
+            newick_tree_path (str): File path to the Newick tree representation.
+            networkx_tree: A networkx tree parsed from the Newick file.
+            node_names (list): List of all node names in the tree.
+            nodes_that_arent_tips (list): Subset of node names that are internal nodes, not tree tips.
+            data: Processed data after initialization and validation.
+
+        Parameters:
+            newick_tree_path (str): Path to the Newick file containing the tree structure.
+            feature_csv_path_with_missing_target (str): Path to the feature data CSV file
+                with missing target information.
+            target_name (str): Name of the target variable to focus on or predict.
+            binary_or_continuous (str): Specifies whether the target variable is binary
+                or continuous.
+            ground_truth_csv_path (str | None, optional): Path to a CSV file containing
+                ground truth data for validation, if any. Defaults to None.
+            sigma (float | None, optional): A parameter for any required calculations
+                or operations, if applicable. Defaults to None.
+            add_self_loops (bool, optional): Whether to introduce self-loops in the
+                network graph. Defaults to False.
+            validation_nodes (list | None, optional): A list of nodes reserved for
+                validation purposes. Defaults to None.
+
+        Raises:
+            ValueError: If no internal nodes are found in the tree structure. Nodes
+                should be named with the prefix 'Node_' followed by a unique identifier.
         """
         self.newick_tree_path = newick_tree_path
 
@@ -351,7 +428,7 @@ class NewickDataset(GenericPhyloDataset):
                          target_name,
                          binary_or_continuous,
                          ground_truth_csv_path=ground_truth_csv_path,
-                         sigma=sigma, add_self_loops=add_self_loops)
+                         sigma=sigma, add_self_loops=add_self_loops, validation_nodes=validation_nodes)
 
         # Load the data
         self.data = self._process()
@@ -377,12 +454,13 @@ class NewickDataset(GenericPhyloDataset):
     def _process(self):
         edge_attr = torch.tensor([self.networkx_tree[u][v]['length'] for u, v in self.networkx_tree.edges()]).view(-1, 1)
         pyg_data = from_networkx(self.networkx_tree)
-        X, y, train_mask, test_mask, y_dtype = self.get_features_and_masks()
+        X, y, train_mask, val_mask, test_mask, y_dtype = self.get_features_and_masks()
 
         data = Data(
             x=torch.tensor(X, dtype=torch.float),
             y=torch.tensor(y, dtype=y_dtype),
             train_mask=train_mask,
+            val_mask=val_mask,
             test_mask=test_mask,
             edge_index=pyg_data.edge_index,
             # edge_attr=edge_attr # Feature propagation transform breaks with edge attributes, so add them back in before the undirected transform.

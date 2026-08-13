@@ -6,23 +6,18 @@ from phylotraitGNN.GNN_models import test_binary_GNN_outputs
 from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset
 
 
-# from phylotraitGNN.parsing_tree_data.visualising import explaining
-
-
-class GCN(torch.nn.Module):
-    def __init__(self, dataset, hidden_channels):
+class GCN_node_classifier(torch.nn.Module):
+    def __init__(self, dataset, hidden_channels, dropout_p):
         super().__init__()
-        torch.manual_seed(1234567)
         # Shaked Brody et al., ‘How Attentive Are Graph Attention Networks?’,
         # arXiv:2105.14491, preprint, arXiv, 31 January 2022, https://doi.org/10.48550/arXiv.2105.14491.
         # Note this adds self loops by default, the attention function applied to neighbours then includes the current node.
-        self.conv1 = GATv2Conv(dataset.num_features, hidden_channels, edge_dim=1)
-        self.conv2 = GATv2Conv(hidden_channels, dataset.num_classes, edge_dim=1)
+        self.conv1 = GATv2Conv(dataset.num_features, hidden_channels, edge_dim=1, dropout=dropout_p)
+        self.conv2 = GATv2Conv(hidden_channels, dataset.num_classes, edge_dim=1, dropout=dropout_p)
 
     def forward(self, x, edge_index, edge_attr):
         x = self.conv1(x, edge_index, edge_attr=edge_attr)
         x = x.relu()
-        x = F.dropout(x, p=0.5, training=self.training)
         x = self.conv2(x, edge_index, edge_attr=edge_attr) # There typically isn't a separate, fully-connected (linear) layer after the last GNN layer, because the final convolution is trained to map embeddings directly to class logits
         return x
 
@@ -43,16 +38,46 @@ class GCN(torch.nn.Module):
         return test_acc, b_score
 
 
-def train_gcn_model(model, data):
+def train_gcn_model(model, data, epochs,verbose=0):
+
     loss_function = torch.nn.CrossEntropyLoss()
     optimizer_class = torch.optim.Adam
     optimizer_kwargs = {'lr': 0.01, 'weight_decay': 5e-4}
     optimizer = optimizer_class(model.parameters(), **optimizer_kwargs)
 
-    for epoch in range(1, 100):
+    for epoch in range(1, epochs):
         loss = model.train_step(data, optimizer, loss_function)
-        print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}')
+        if verbose > 0:
+            print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}')
 
+
+def predict_node_classes(dataset,epochs, hidden_channels, dropout_p):
+    model = GCN_node_classifier(dataset, hidden_channels=hidden_channels, dropout_p=dropout_p)
+    data = dataset.data
+    # Where y values are all the same, instead of training the model, out should be a tensor with two columns, one for each class.
+    # Values in the column denoting the class that appears in y should be 1, and all other values should be 0.
+    if torch.unique(data.y).shape[0] == 1:
+        out = torch.zeros((data.y.shape[0], 2))
+        if torch.unique(data.y) == 0:
+            # set first column of out to all 1s
+            out[:, 0] = 1
+        elif torch.unique(data.y) == 1:
+            out[:, 1] = 1
+        else:
+            raise ValueError('y must contain only 0 or 1')
+        return out
+    else:
+        train_gcn_model(model, data, epochs)
+
+        model.eval()  # Set model to evaluation mode.
+        out_ = model(data.x, data.edge_index, edge_attr=data.edge_weight)
+        probs = F.softmax(out_, dim=1)  # Convert logits to probabilities.
+        assert (torch.all(probs >= 0.0) and torch.all(probs <= 1.0))
+
+        # Add assertion that rows in pred proba add up to 1
+        assert (probs.sum(dim=1).max().item() < 1.01)
+        assert (probs.sum(dim=1).max().item() > 0.99)
+    return probs
 
 def main():
     dataset = DistanceMatrixDataset(

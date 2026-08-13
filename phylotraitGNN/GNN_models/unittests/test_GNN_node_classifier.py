@@ -4,7 +4,7 @@ import unittest
 import pandas as pd
 import torch
 import torch.nn.functional as F
-from phylotraitGNN.GNN_models.GNN_node_classifier import GCN, train_gcn_model
+from phylotraitGNN.GNN_models.GNN_node_classifier import GCN_node_classifier, train_gcn_model
 from torch_geometric.data import Data
 
 from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset
@@ -12,7 +12,7 @@ from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset
 
 class TestGCN(unittest.TestCase):
     def setUp(self):
-        # Mock dataset with appropriate structure for GCN
+        # Mock dataset with appropriate structure for GCN_node_classifier
         num_nodes = 5
         num_features = 3
         num_classes = 2
@@ -29,7 +29,7 @@ class TestGCN(unittest.TestCase):
         self.dataset = type("MockDataset", (object,), {"num_features": num_features, "num_classes": num_classes})
 
     def test_train_step(self):
-        model = GCN(self.dataset, hidden_channels=4)
+        model = GCN_node_classifier(self.dataset, hidden_channels=4, dropout_p=0.1)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
         loss_function = F.cross_entropy
 
@@ -38,7 +38,7 @@ class TestGCN(unittest.TestCase):
         self.assertGreaterEqual(loss.item(), 0.0)
 
     def test_test_method(self):
-        model = GCN(self.dataset, hidden_channels=4)
+        model = GCN_node_classifier(self.dataset, hidden_channels=4, dropout_p=0.1)
 
         with torch.no_grad():
             test_acc, brier_score = model.test(self.data)
@@ -91,7 +91,7 @@ class TestGCN(unittest.TestCase):
         data = dataset.data
         test_acc_1, brier1 = model.test(data)
 
-        train_gcn_model(model, data)
+        train_gcn_model(model, data, epochs=100)
 
         # Check training has changed scores
         test_acc_, brier = model.test(data)
@@ -123,7 +123,7 @@ class TestGCN(unittest.TestCase):
             k_nearest=50
 
         )
-        model = GCN(dataset, hidden_channels=4)
+        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
 
@@ -137,7 +137,7 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary'
 
         )
-        model = GCN(dataset, hidden_channels=4)
+        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
 
@@ -150,7 +150,7 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary'
 
         )
-        model = GCN(dataset, hidden_channels=4)
+        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
 
@@ -164,7 +164,7 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary'
 
         )
-        model = GCN(dataset, hidden_channels=4)
+        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
 
@@ -177,7 +177,7 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary'
 
         )
-        model = GCN(dataset, hidden_channels=4)
+        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
 
@@ -191,7 +191,7 @@ class TestGCN(unittest.TestCase):
 
         )
 
-        model = GCN(dataset, hidden_channels=4)
+        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
         try:
             self.for_a_dataset_and_model(dataset, model)
         except AssertionError:
@@ -208,7 +208,7 @@ class TestGCN(unittest.TestCase):
 
         )
 
-        model = GCN(dataset, hidden_channels=4)
+        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
 
         try:
             self.for_a_dataset_and_model(dataset, model)

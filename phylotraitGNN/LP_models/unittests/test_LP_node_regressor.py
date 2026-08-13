@@ -1,13 +1,10 @@
-import copy
-import os
 import unittest
 
+import pandas as pd
 import torch
-from phylotraitGNN.GNN_models.GNN_node_classifier import GCN, train_gcn_model
-from torch_geometric.data import Data
 
 from phylotraitGNN.LP_models import propagate_labels
-from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset
+from phylotraitGNN.parsing_tree_data import NewickDataset
 
 
 class TestGCN(unittest.TestCase):
@@ -44,31 +41,6 @@ class TestGCN(unittest.TestCase):
         feature_data_without_nans[dataset.target_name] = feature_data_without_nans[dataset.target_name].astype(float)
         pd.testing.assert_frame_equal(predictions_like_df, feature_data_without_nans)
 
-    def for_a_dataset_and_model(self, dataset, model):
-
-        data = dataset.data
-        test_acc_1, brier1 = model.test(data)
-
-        train_gcn_model(model, data)
-
-        # Check training has changed scores
-        test_acc_, brier = model.test(data)
-        # self.assertNotEqual(test_acc_1, test_acc_)
-        self.assertNotEqual(brier1, brier)
-
-        # Check it's not just outputting the same values
-        out_ = model(data.x, data.edge_index, edge_attr=data.edge_weight)
-        self.for_model_outputs(out_, dataset)
-
-        # Test edge attributes are being used
-        with torch.no_grad():
-            # Clone data, zero out edge_attr if it exists
-            data_no_edge_attr = copy.deepcopy(data)
-            data_no_edge_attr.edge_weight = torch.zeros_like(data.edge_weight)
-            out_with_none = model(data.x, data.edge_index, None)
-            out_without = model(data_no_edge_attr.x, data_no_edge_attr.edge_index, data_no_edge_attr.edge_weight)
-            assert not torch.allclose(out_, out_without), "Model outputs are unchanged by edge_attr!"
-            assert not torch.allclose(out_, out_with_none), "Model outputs are unchanged by edge_attr!"
 
     def test_Newick_with_no_features(self):
         dataset = NewickDataset(

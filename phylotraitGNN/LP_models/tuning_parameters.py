@@ -10,6 +10,7 @@ from bayes_opt import BayesianOptimization
 
 
 def get_datasets_for_cross_validation(dataset: GenericPhyloDataset, number_of_splits: int = 5) -> list:
+    raise DeprecationWarning("parsing_tree_data methods now have functionality to include validation masks in the dataset. ")
     ## For the given dataset, make five copies with where the training samples are split into train/val
     ## Do this by setting more values to false in the train mask and making a val_mask which is true for these values
     """

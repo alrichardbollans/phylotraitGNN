@@ -145,6 +145,17 @@ class TestDistanceMatrixDataset(unittest.TestCase):
                 binary_or_continuous="invalid"
             )
 
+    def test_invalid_val_nodes(self):
+        with self.assertRaises(ValueError):
+            DistanceMatrixDataset(
+                tree_distance_csv_path=self.tree_distance_csv_path,
+                feature_csv_path_with_missing_target=self.feature_csv_path,
+                ground_truth_csv_path=self.ground_truth_csv_path,
+                target_name="Target",
+                binary_or_continuous="binary",
+                validation_nodes=['ppppp', 'notadnode']
+            )
+
     def test_edge_creation_with_threshold(self):
         dataset = DistanceMatrixDataset(
             tree_distance_csv_path=self.tree_distance_csv_path,
@@ -177,6 +188,23 @@ class TestDistanceMatrixDataset(unittest.TestCase):
         self.assertIsNotNone(data.edge_index)
         self.assertEqual(data.edge_index.size(1), 4)  # Each node connects to 1 nearest node
 
+    def test_including_validation_nodes(self):
+        nw_dataset = DistanceMatrixDataset(
+            tree_distance_csv_path=self.tree_distance_csv_path,
+            feature_csv_path_with_missing_target=self.feature_csv_path,
+            ground_truth_csv_path=self.ground_truth_csv_path,
+            target_name="Target",
+            binary_or_continuous="binary",
+            k_nearest=1,
+            validation_nodes=["Node2"]
+        )
 
+        assert (nw_dataset.data.val_mask).sum() == 1
+        # Ensure node_names is a numpy array for boolean indexing support
+        node_names = np.array(nw_dataset.node_names)
+        val_node_names = node_names[nw_dataset.data.val_mask.cpu().numpy()]  # Convert mask to numpy if needed
+        # Now test that the selected names match what is expected (order might matter)
+        expected_names = np.array(["Node2"])
+        assert np.array_equal(val_node_names, expected_names)
 if __name__ == "__main__":
     unittest.main()
