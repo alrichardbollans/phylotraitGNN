@@ -15,7 +15,7 @@ class GenericPhyloDataset(Dataset):
                  target_name: str,
                  binary_or_continuous: str,
                  ground_truth_csv_path: str = None,
-                 sigma: float = None, transform: Optional[Callable] = None, add_self_loops:bool = False):
+                 sigma: float = None, transform: Optional[Callable] = None, add_self_loops: bool = False):
 
         self.binary_or_continuous = binary_or_continuous
         self.target_name = target_name
@@ -169,7 +169,7 @@ class GenericPhyloDataset(Dataset):
             y_with_missing_target_df = pd.concat([y_with_missing_target_df, node_target_df], axis=0)
 
         # Make sure all nodes are present in both feature and target dataframes, and  dataframes have same order
-        # Both X and y are sorted by self.node_names
+        # Both X and y are sorted by self.node_names which provides the order for thre resulting predictions.
         X = X_feature_df.loc[self.node_names].values  # Align with node names
 
         if self.ground_truth_df is None:
@@ -200,6 +200,13 @@ class GenericPhyloDataset(Dataset):
     def get(self, idx):
         return self.data
 
+    def get_model_prediction_outputs_in_feature_order(self, predictions):
+        # Predictions are output in order of self.node_names, which contains nodes not in feature data and not in same order
+        # This function outputs a dataframe with the same order as the feature dataframe.
+        prediction_df = pd.DataFrame(predictions.detach().cpu().numpy(), index=pd.Series(self.node_names, name='accepted_species'))
+        out_df = prediction_df.loc[self.feature_with_missing_target_df.index]
+        return out_df
+
 
 class DistanceMatrixDataset(GenericPhyloDataset):
     """Dataset from distance matrix CSV file i.e. where all tips are connected to each other by a distance matrix."""
@@ -212,7 +219,7 @@ class DistanceMatrixDataset(GenericPhyloDataset):
                  threshold: Optional[float] = None,
                  k_nearest: Optional[int] = None,
                  ground_truth_csv_path: str = None,
-                 sigma: float = None, add_self_loops:bool = False ):
+                 sigma: float = None, add_self_loops: bool = False):
         """
         Args:
             tree_distance_csv_path: Path to CSV file with distance matrix. This is created in R with tree_distances = ape::cophenetic.phylo(out_tree) and written to a file with  write.csv.
@@ -241,7 +248,7 @@ class DistanceMatrixDataset(GenericPhyloDataset):
                          target_name,
                          binary_or_continuous,
                          ground_truth_csv_path=ground_truth_csv_path,
-                         sigma=sigma, add_self_loops = add_self_loops)
+                         sigma=sigma, add_self_loops=add_self_loops)
 
         # Load the data
         self.data = self._process()
@@ -316,7 +323,7 @@ class NewickDataset(GenericPhyloDataset):
                  target_name: str,
                  binary_or_continuous: str,
                  ground_truth_csv_path: str = None,
-                 sigma: float = None, add_self_loops:bool = False):
+                 sigma: float = None, add_self_loops: bool = False):
         """
         Args:
             newick_tree_path: Path to CSV file with newick tree.
@@ -328,10 +335,11 @@ class NewickDataset(GenericPhyloDataset):
         """
         self.newick_tree_path = newick_tree_path
 
-        # Read the tree CSV file
+        # Read the tree file
         self.networkx_tree = self.newick_to_networkx(newick_tree_path)
         # Nodes should all be named 'Node_x' where x is the node number
         # Can set this in R with `paste("Node",1L:tree$Nnode, sep='_') -> tree$node.label`
+        # In future, might want to set this using the feature dataframe so the distinction is to do with known/unknown features rather than tips/nodes.
         self.node_names = list(self.networkx_tree.nodes)
         self.nodes_that_arent_tips = [n for n in self.node_names if 'Node_' in n]
         if len(self.nodes_that_arent_tips) == 0:
@@ -341,7 +349,7 @@ class NewickDataset(GenericPhyloDataset):
                          target_name,
                          binary_or_continuous,
                          ground_truth_csv_path=ground_truth_csv_path,
-                         sigma=sigma,add_self_loops=add_self_loops)
+                         sigma=sigma, add_self_loops=add_self_loops)
 
         # Load the data
         self.data = self._process()

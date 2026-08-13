@@ -1,7 +1,7 @@
 import copy
 import os
 import unittest
-
+import pandas as pd
 import torch
 import torch.nn.functional as F
 from phylotraitGNN.GNN_models.GNN_node_classifier import GCN, train_gcn_model
@@ -67,6 +67,10 @@ class TestGCN(unittest.TestCase):
 
         # Add assertion that rows in pred proba add up to 1
         self.assertAlmostEqual(probs.sum(dim=1).max().item(), 1.0, places=6)
+
+        predictions = dataset.get_model_prediction_outputs_in_feature_order(probs)
+        pd.testing.assert_index_equal(predictions.index, dataset.feature_with_missing_target_df.index)
+
     def for_a_dataset_and_model(self, dataset, model):
 
         data = dataset.data
@@ -178,7 +182,6 @@ class TestGCN(unittest.TestCase):
         except AssertionError:
             print('No features, so this will break.')
             pass
-
 
     def test_distance_with_no_features(self):
         dataset = DistanceMatrixDataset(

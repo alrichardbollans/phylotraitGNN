@@ -22,20 +22,20 @@ class TestDistanceMatrixDataset(unittest.TestCase):
         distance_data = pd.DataFrame(
             data=np.array([[0.0, 1.0, 2.0], [1.0, 0.0, 1.5], [2.0, 1.5, 0.0]]),
             columns=["Node1", "Node2", "Node3"],
-            index=["Node1", "Node2", "Node3"]
+            index=["Node3", "Node1", "Node2"]
         )
         distance_data.to_csv(self.tree_distance_csv_path)
 
         # Mock feature data with missing target
         feature_data = pd.DataFrame(
-            data={"Feature1": [1.0, 2.0, 4],"Feature2": [2, 4, 8], "Target": [0.0, np.nan, np.nan]},
+            data={"Feature1": [1.0, 2.0, 4], "Feature2": [2, 4, 8], "Target": [0.0, np.nan, np.nan]},
             index=["Node1", "Node2", "Node3"]
         )
         feature_data.to_csv(self.feature_csv_path)
 
         # Mock ground truth data
         ground_truth_data = pd.DataFrame(
-            data={"Feature1": [1.0, 2.0, 4],"Feature2": [2, 4, 8], "Target": [0.0, 1.0, 1.0]},
+            data={"Feature1": [1.0, 2.0, 4], "Feature2": [2, 4, 8], "Target": [0.0, 1.0, 1.0]},
             index=["Node1", "Node2", "Node3"]
         )
         ground_truth_data.to_csv(self.ground_truth_csv_path)
@@ -90,22 +90,22 @@ class TestDistanceMatrixDataset(unittest.TestCase):
 
         data = dataset.get(0)
         self.assertEqual(data.num_nodes, 3)
-        self.assertTrue(data.train_mask[0].item())
-        self.assertFalse(data.train_mask[1].item())
+        self.assertTrue(data.train_mask[1].item())
+        self.assertFalse(data.train_mask[0].item())
         self.assertFalse(data.train_mask[2].item())
-        self.assertTrue(data.test_mask[1].item())
+        self.assertTrue(data.test_mask[0].item())
         self.assertTrue(data.test_mask[2].item())
-        self.assertFalse(data.test_mask[0].item())
+        self.assertFalse(data.test_mask[1].item())
         self.assertEqual(len(data.edge_index[0]), 6)  # Undirected graph, i.e.
 
-        self.assertEqual(data.node_stores[0]['x'][0,0],1)
-        self.assertEqual(data.node_stores[0]['x'][0,1],2)
-        self.assertEqual(data.node_stores[0]['x'][2,0],4)
-        self.assertEqual(data.node_stores[0]['x'][2,1],8)
+        self.assertEqual(data.node_stores[0]['x'][0, 0], 4)
+        self.assertEqual(data.node_stores[0]['x'][0, 1], 8)
+        self.assertEqual(data.node_stores[0]['x'][2, 0], 2)
+        self.assertEqual(data.node_stores[0]['x'][2, 1], 4)
 
-        self.assertEqual(data.node_stores[0]['y'][0],0)
-        self.assertEqual(data.node_stores[0]['y'][1],1)
-        self.assertEqual(data.node_stores[0]['y'][2],1)
+        self.assertEqual(data.node_stores[0]['y'][0], 1)
+        self.assertEqual(data.node_stores[0]['y'][1], 0)
+        self.assertEqual(data.node_stores[0]['y'][2], 1)
 
     def test_dataset_process_no_ground_truth(self):
         dataset = DistanceMatrixDataset(
@@ -117,23 +117,23 @@ class TestDistanceMatrixDataset(unittest.TestCase):
 
         data = dataset.get(0)
         self.assertEqual(data.num_nodes, 3)
-        self.assertTrue(data.train_mask[0].item())
-        self.assertFalse(data.train_mask[1].item())
+        self.assertTrue(data.train_mask[1].item())
+        self.assertFalse(data.train_mask[0].item())
         self.assertFalse(data.train_mask[2].item())
-        self.assertTrue(data.test_mask[1].item())
+        self.assertTrue(data.test_mask[0].item())
         self.assertTrue(data.test_mask[2].item())
-        self.assertFalse(data.test_mask[0].item())
+        self.assertFalse(data.test_mask[1].item())
         self.assertEqual(len(data.edge_index[0]), 6)  # Undirected graph, i.e.
 
-        self.assertEqual(data.node_stores[0]['x'][0,0],1)
-        self.assertEqual(data.node_stores[0]['x'][0,1],2)
-        self.assertEqual(data.node_stores[0]['x'][2,0],4)
-        self.assertEqual(data.node_stores[0]['x'][2,1],8)
+        self.assertEqual(data.node_stores[0]['x'][0, 0], 4)
+        self.assertEqual(data.node_stores[0]['x'][0, 1], 8)
+        self.assertEqual(data.node_stores[0]['x'][2, 0], 2)
+        self.assertEqual(data.node_stores[0]['x'][2, 1], 4)
 
-        self.assertEqual(data.node_stores[0]['y'][0],0)
+        self.assertEqual(data.node_stores[0]['y'][0], 0)
         nan_value = torch.tensor(np.array([np.nan]), dtype=torch.int64).numpy()[0]
-        self.assertEqual(data.node_stores[0]['y'][1],0)
-        self.assertEqual(data.node_stores[0]['y'][2],0)
+        self.assertEqual(data.node_stores[0]['y'][1], 0)
+        self.assertEqual(data.node_stores[0]['y'][2], 0)
 
     def test_invalid_binary_or_continuous(self):
         with self.assertRaises(ValueError):
@@ -175,8 +175,7 @@ class TestDistanceMatrixDataset(unittest.TestCase):
 
         data = dataset.get(0)
         self.assertIsNotNone(data.edge_index)
-        self.assertEqual(data.edge_index.size(1),  4)  # Each node connects to 1 nearest node
-
+        self.assertEqual(data.edge_index.size(1), 4)  # Each node connects to 1 nearest node
 
 
 if __name__ == "__main__":

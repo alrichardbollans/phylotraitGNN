@@ -1,7 +1,7 @@
 import unittest
 
 import torch
-
+import pandas as pd
 from torch_geometric.data import Data
 from torch_geometric.nn import LabelPropagation
 
@@ -10,22 +10,6 @@ from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset
 
 
 class TestGCN(unittest.TestCase):
-    def setUp(self):
-        # Mock dataset with appropriate structure for GCN
-        num_nodes = 5
-        num_features = 3
-        num_classes = 2
-        edge_index = torch.tensor([[0, 1, 2, 3, 4, 0],
-                                   [1, 2, 3, 4, 0, 3]], dtype=torch.long)
-        x = torch.rand((num_nodes, num_features))  # Random feature matrix
-        y = torch.tensor([0, 1, 1, 0, 1], dtype=torch.long)  # Mock labels
-
-        # Mock masks for training and testing
-        train_mask = torch.tensor([True, True, False, False, False], dtype=torch.bool)
-        test_mask = torch.tensor([False, False, True, True, True], dtype=torch.bool)
-
-        self.data = Data(x=x, edge_index=edge_index, y=y, train_mask=train_mask, test_mask=test_mask)
-        self.dataset = type("MockDataset", (object,), {"num_features": num_features, "num_classes": num_classes})
 
     def for_model_outputs(self, out_, dataset):
         data = dataset.data
@@ -44,6 +28,19 @@ class TestGCN(unittest.TestCase):
 
         # Add assertion that rows in pred proba add up to 1
         self.assertAlmostEqual(out_.sum(dim=1).max().item(), 1.0, places=6)
+
+        predictions = dataset.get_model_prediction_outputs_in_feature_order(out_)
+        pd.testing.assert_index_equal(predictions.index, dataset.feature_with_missing_target_df.index)
+
+        # This check ensures that the output predictions properly preserve the order of the features in the input dataset.
+        # And also preserve the training values.
+
+        feature_data_without_nans = dataset.feature_with_missing_target_df.dropna(subset=[dataset.target_name])
+        predictions_like_df = predictions[[1]].rename(columns={1: dataset.target_name})
+        predictions_like_df = predictions_like_df[predictions_like_df.index.isin(feature_data_without_nans.index)]
+        predictions_like_df[dataset.target_name] = predictions_like_df[dataset.target_name].astype(float)
+        feature_data_without_nans[dataset.target_name] = feature_data_without_nans[dataset.target_name].astype(float)
+        pd.testing.assert_frame_equal(predictions_like_df, feature_data_without_nans)
 
     def test_Newick_with_no_features(self):
         dataset = NewickDataset(
@@ -167,6 +164,7 @@ class TestGCN(unittest.TestCase):
         model2 = LabelPropagation(num_layers=2, alpha=0.9)
         from torch_geometric.utils import one_hot
         y2_oh = one_hot(y2)
+
         def post_step_with_mask_and_y(model_out):
             return my_post_step(model_out, mask2, y2_oh)
 
@@ -176,6 +174,7 @@ class TestGCN(unittest.TestCase):
 
         assert torch.allclose(out2[mask2], out2[mask2])
         assert torch.allclose(out2[mask2], y2_oh[mask2].float())
+
 
 if __name__ == "__main__":
     unittest.main()
