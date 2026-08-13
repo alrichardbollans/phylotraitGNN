@@ -71,6 +71,21 @@ class TestGCN(unittest.TestCase):
         predictions = dataset.get_model_prediction_outputs_in_feature_order(probs)
         pd.testing.assert_index_equal(predictions.index, dataset.feature_with_missing_target_df.index)
 
+        if dataset.ground_truth_df is not None:
+            # Test data isn't leaked
+            test_data = dataset.ground_truth_df[dataset.feature_with_missing_target_df[dataset.target_name].isna()][[dataset.target_name]]
+            testing_predictions_like_df = predictions[[1]].rename(columns={1: dataset.target_name})[[dataset.target_name]]
+            testing_predictions_like_df = testing_predictions_like_df[testing_predictions_like_df.index.isin(test_data.index)]
+            testing_predictions_like_df[dataset.target_name] = testing_predictions_like_df[dataset.target_name].astype(float)
+            test_data[dataset.target_name] = test_data[dataset.target_name].astype(float)
+
+            try:
+                pd.testing.assert_frame_equal(testing_predictions_like_df, test_data)
+            except AssertionError:
+                pass
+            else:
+                raise AssertionError("Ground truth and predictions should not be the same for missing values")
+
     def for_a_dataset_and_model(self, dataset, model):
 
         data = dataset.data

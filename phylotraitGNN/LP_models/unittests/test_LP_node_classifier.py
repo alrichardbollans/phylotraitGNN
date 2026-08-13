@@ -36,11 +36,27 @@ class TestGCN(unittest.TestCase):
         # And also preserve the training values.
 
         feature_data_without_nans = dataset.feature_with_missing_target_df.dropna(subset=[dataset.target_name])
-        predictions_like_df = predictions[[1]].rename(columns={1: dataset.target_name})
-        predictions_like_df = predictions_like_df[predictions_like_df.index.isin(feature_data_without_nans.index)]
-        predictions_like_df[dataset.target_name] = predictions_like_df[dataset.target_name].astype(float)
+        training_predictions_like_df = predictions[[1]].rename(columns={1: dataset.target_name})
+        training_predictions_like_df = training_predictions_like_df[training_predictions_like_df.index.isin(feature_data_without_nans.index)]
+        training_predictions_like_df[dataset.target_name] = training_predictions_like_df[dataset.target_name].astype(float)
         feature_data_without_nans[dataset.target_name] = feature_data_without_nans[dataset.target_name].astype(float)
-        pd.testing.assert_frame_equal(predictions_like_df, feature_data_without_nans)
+        pd.testing.assert_frame_equal(training_predictions_like_df, feature_data_without_nans)
+
+        if dataset.ground_truth_df is not None:
+            # Test data isn't leaked
+            test_data = dataset.ground_truth_df[dataset.feature_with_missing_target_df[dataset.target_name].isna()][[dataset.target_name]]
+            testing_predictions_like_df = predictions[[1]].rename(columns={1: dataset.target_name})[[dataset.target_name]]
+            testing_predictions_like_df = testing_predictions_like_df[testing_predictions_like_df.index.isin(test_data.index)]
+            testing_predictions_like_df[dataset.target_name] = testing_predictions_like_df[dataset.target_name].astype(float)
+            test_data[dataset.target_name] = test_data[dataset.target_name].astype(float)
+
+            try:
+                pd.testing.assert_frame_equal(testing_predictions_like_df, test_data)
+            except AssertionError:
+                pass
+            else:
+                raise AssertionError("Ground truth and predictions should not be the same for missing values")
+
 
     def test_Newick_with_no_features(self):
         dataset = NewickDataset(

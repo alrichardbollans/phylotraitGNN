@@ -30,7 +30,7 @@ def my_post_step(out, mask, y_ohe):
     # Normalized output
     normalized_out = out / row_sums
 
-    # Where mask is True, take normalized_out; otherwise keep original out
+    # Where this mask is True, take normalized_out; otherwise keep original out
     mask_for_greater_than_1 = (row_sums > 1)
     clamped_out = torch.where(mask_for_greater_than_1, normalized_out, out)
 
