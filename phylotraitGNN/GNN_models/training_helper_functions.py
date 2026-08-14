@@ -33,13 +33,9 @@ class EarlyStopping:
         model.load_state_dict(self.best_model_state)
 
 
-def train_gcn_model(model, data, epochs, plot_loss=False, early_stopping=None):
+def train_gcn_model(model, data, loss_function, optimizer, epochs, plot_loss=False, early_stopping=None):
     if early_stopping is not None and not (hasattr(data, 'val_mask')):
         raise ValueError('Early stopping is only supported for datasets with a validation mask.')
-
-    loss_function = torch.nn.CrossEntropyLoss()
-    optimizer_class = torch.optim.Adam
-    optimizer = optimizer_class(model.parameters())
 
     train_losses = []
     val_losses = []
@@ -51,7 +47,7 @@ def train_gcn_model(model, data, epochs, plot_loss=False, early_stopping=None):
             if early_stopping is not None:
                 early_stopping(val_loss, model)
                 if early_stopping.early_stop:
-                    print("Early stopping")
+                    # print("Early stopping")
                     break
     if plot_loss:
         import matplotlib.pyplot as plt
@@ -62,7 +58,6 @@ def train_gcn_model(model, data, epochs, plot_loss=False, early_stopping=None):
         plt.show()
     if early_stopping is not None:
         early_stopping.load_best_model(model)
-
 
 
 if __name__ == '__main__':

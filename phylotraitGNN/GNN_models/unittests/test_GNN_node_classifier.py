@@ -53,6 +53,9 @@ class TestGCN(unittest.TestCase):
     def for_model_outputs(self, out_, dataset):
         data = dataset.data
 
+        # check that predictions are logits, not already softmaxed
+        assert not (out_.sum(dim=1) == 1).all()
+
         # First check that the outputs have multiple different values.
         test_outs = set([round(c, 5) for c in set(out_[data.test_mask].detach().cpu().numpy()[:, 1])])
         self.assertGreaterEqual(len(test_outs), 2)
@@ -98,14 +101,15 @@ class TestGCN(unittest.TestCase):
             else:
                 raise AssertionError("Ground truth and predictions should not be the same for missing values")
 
-    def for_a_dataset_and_model(self, dataset, model,early_stopping=None):
+    def for_a_dataset_and_model(self, dataset, model, early_stopping=None):
 
         data = dataset.data
         test_acc_1, brier1 = model.test(data)
-        if early_stopping is not None:
-            train_gcn_model(model, data, epochs=100, early_stopping=early_stopping)
-        else:
-            train_gcn_model(model, data, epochs=100)
+
+        loss_function = torch.nn.CrossEntropyLoss()
+        optimizer = torch.optim.Adam(model.parameters())
+
+        train_gcn_model(model, data, loss_function, optimizer, epochs=100, early_stopping=early_stopping)
 
         # Check training has changed scores
         test_acc_, brier = model.test(data)
@@ -143,7 +147,7 @@ class TestGCN(unittest.TestCase):
         self.for_a_dataset_and_model(dataset, model)
         model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
         early_stopping = EarlyStopping(patience=5, delta=0.01)
-        self.assertRaises(ValueError, self.for_a_dataset_and_model, dataset, model,early_stopping)
+        self.assertRaises(ValueError, self.for_a_dataset_and_model, dataset, model, early_stopping)
 
         dataset = DistanceMatrixDataset(
             tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary/tree_distances.csv',
@@ -159,7 +163,7 @@ class TestGCN(unittest.TestCase):
         self.for_a_dataset_and_model(dataset, model)
         model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
         early_stopping = EarlyStopping(patience=20, delta=0.01)
-        self.for_a_dataset_and_model(dataset, model,early_stopping)
+        self.for_a_dataset_and_model(dataset, model, early_stopping)
 
     def test_distance_training_process_full(self):
 
@@ -285,16 +289,20 @@ class TestGCN(unittest.TestCase):
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
             ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary/ground_truth.csv',
             target_name='trait_BM_trend_scaled',
-            binary_or_continuous='binary', validation_nodes=['t24', 't14', 't27','t36','t94','t3']
+            binary_or_continuous='binary', validation_nodes=['t24', 't14', 't27', 't36', 't94', 't3']
 
         )
         data = dataset.data
         model_without_early_stopping = GATv2Conv_node_classifier(dataset, hidden_channels=2, dropout_p=0.1)
-        train_gcn_model(model_without_early_stopping, data, epochs=1000, plot_loss=True)
+        loss_function = torch.nn.CrossEntropyLoss()
+        optimizer = torch.optim.Adam(model_without_early_stopping.parameters())
+        train_gcn_model(model_without_early_stopping, data, loss_function, optimizer, epochs=1000, plot_loss=True)
 
         model = GATv2Conv_node_classifier(dataset, hidden_channels=2, dropout_p=0.1)
         early_stopping = EarlyStopping(patience=10, delta=0.01)
-        train_gcn_model(model, data, epochs=100, plot_loss=True,early_stopping=early_stopping)
+        optimizer = torch.optim.Adam(model.parameters())
+
+        train_gcn_model(model, data, loss_function, optimizer, epochs=100, plot_loss=True, early_stopping=early_stopping)
 
 
 if __name__ == "__main__":
