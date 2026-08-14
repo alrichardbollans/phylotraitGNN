@@ -206,5 +206,23 @@ class TestDistanceMatrixDataset(unittest.TestCase):
         # Now test that the selected names match what is expected (order might matter)
         expected_names = np.array(["Node2"])
         assert np.array_equal(val_node_names, expected_names)
+
+    def test_dataset_initialization(self):
+        dataset = DistanceMatrixDataset(
+            tree_distance_csv_path='../unittest_data/binary/tree_distances.csv',
+            feature_csv_path_with_missing_target='../unittest_data/binary/mcar_values.csv',
+            ground_truth_csv_path='../unittest_data/binary/ground_truth.csv',
+            target_name='trait_BM_trend_scaled',
+            binary_or_continuous='binary'
+        )
+
+        self.assertEqual(dataset.len(), 1)
+        self.assertEqual(len(dataset.node_names), 100)
+        self.assertIsInstance(dataset.data.y, torch.Tensor)
+        self.assertIs(dataset.data.y.dtype, torch.int64)
+
+        g = torch_geometric.utils.to_networkx(dataset[0], to_undirected=True)
+        nx.draw(g)
+        plt.show()
 if __name__ == "__main__":
     unittest.main()

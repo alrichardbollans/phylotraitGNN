@@ -8,6 +8,7 @@ from Bio import Phylo
 from torch_geometric.data import Data, Dataset
 from torch_geometric.transforms import ToUndirected, FeaturePropagation, AddSelfLoops
 from torch_geometric.utils import from_networkx
+from sklearn.impute import SimpleImputer
 
 
 class GenericPhyloDataset(Dataset):
@@ -103,25 +104,19 @@ class GenericPhyloDataset(Dataset):
         return edge_weight, original_edge_std
 
     @staticmethod
-    def transform_data(data, edge_length, sigma: float = None, add_self_loops=False):
-        # From Emanuele Rossi et al., ‘On the Unreasonable Effectiveness of Feature Propagation in Learning on Graphs with Missing Node Features’,
-        # arXiv:2111.12128, preprint, arXiv, 23 May 2022, https://doi.org/10.48550/arXiv.2111.12128.
-        # https://pytorch-geometric.readthedocs.io/en/stable/generated/torch_geometric.transforms.FeaturePropagation.html#torch_geometric.transforms.FeaturePropagation
-        # if data.x.shape[1] == 0:
-        #     data.x = torch.ones((data.num_nodes, 1))
-        # else:
+    def transform_data(data, add_self_loops=False):
+        # I found that the pytorch_geometric implementation of FeaturePropagation would break when edge weights included.
+        # Without edge weights, it runs but seems to output mean feature values. Instead, just use simple imputer here.
         missing_mask = torch.isnan(data.x)
-        FeaturePropagation_transform = FeaturePropagation(missing_mask=missing_mask)
         if torch.any(missing_mask):
-            data = FeaturePropagation_transform(data)
-
-        # Feature propagation transform breaks with edge attributes, so add them back in before the undirected transform.
-        edge_weight, original_edge_std = GenericPhyloDataset.get_edge_weights(edge_length, sigma)
-        data.original_edge_std = original_edge_std
-        data.edge_weight = edge_weight
+            # Set up a SimpleImputer to impute missing values in data.x
+            x_np = data.x.cpu().numpy()  # Convert tensor to numpy array
+            imputer = SimpleImputer()
+            x_imputed = imputer.fit_transform(x_np)
+            data.x = torch.from_numpy(x_imputed).type_as(data.x)  # Convert back to tensor
 
         if add_self_loops:
-            assert edge_weight.max() <= 1
+            assert data.edge_weight.max() <= 1
             data = AddSelfLoops(fill_value=1)(data)
 
         data = ToUndirected(reduce='mean')(data)
@@ -177,7 +172,7 @@ class GenericPhyloDataset(Dataset):
         feature_names = X_feature_df.columns
 
         if self.ground_truth_df is not None:
-            pd.testing.assert_frame_equal(X_feature_df, self.ground_truth_df[feature_names])
+            pd.testing.assert_frame_equal(X_feature_df, self.ground_truth_df[feature_names], check_dtype=False)
 
             y_df = self.ground_truth_df[[self.target_name]]
         else:
@@ -188,7 +183,7 @@ class GenericPhyloDataset(Dataset):
             avg_training_value = y_with_missing_target_df[self.target_name].dropna().mean()
         nan_target_df = pd.DataFrame()
         nodes_without_feature_values = [name for name in self.node_names if name not in X_feature_df.index]
-        if len(nodes_without_feature_values)>0:
+        if len(nodes_without_feature_values) > 0:
             ## When there are nodes that arent tips, these have no feature values.
             ## For features, give them a nan value. These will be filled in later by feature propagation.
 
@@ -200,7 +195,7 @@ class GenericPhyloDataset(Dataset):
 
             ## For target, Give these the avg training feature value.
             nan_target_df = pd.DataFrame([[avg_training_value]] * (len(nodes_without_feature_values)), index=nodes_without_feature_values,
-                                          columns=[self.target_name])
+                                         columns=[self.target_name])
             nan_target_df.index.name = self.index_name
             y_df = pd.concat([y_df, nan_target_df], axis=0)
 
@@ -361,6 +356,7 @@ class DistanceMatrixDataset(GenericPhyloDataset):
             ).view(-1, 1)
 
         X, y, train_mask, val_mask, test_mask, y_dtype = self.get_features_and_masks()
+        edge_weight, original_edge_std = GenericPhyloDataset.get_edge_weights(edge_attr, self.sigma)
 
         data = Data(
             x=torch.tensor(X, dtype=torch.float),
@@ -369,9 +365,10 @@ class DistanceMatrixDataset(GenericPhyloDataset):
             val_mask=val_mask,
             test_mask=test_mask,
             edge_index=edge_index,
-            # edge_attr=edge_attr # Feature propagation transform breaks with edge attributes, so add them back in before the undirected transform.
+            edge_weight=edge_weight,
+            original_edge_std=original_edge_std,
         )
-        data = self.transform_data(data, edge_length=edge_attr, sigma=self.sigma, add_self_loops=self.add_self_loops)
+        data = self.transform_data(data, add_self_loops=self.add_self_loops)
 
         return data
 
@@ -446,7 +443,9 @@ class NewickDataset(GenericPhyloDataset):
         return G
 
     def _process(self):
-        edge_attr = torch.tensor([self.networkx_tree[u][v]['length'] for u, v in self.networkx_tree.edges()]).view(-1, 1)
+        edge_length = torch.tensor([self.networkx_tree[u][v]['length'] for u, v in self.networkx_tree.edges()]).view(-1, 1)
+        edge_weight, original_edge_std = GenericPhyloDataset.get_edge_weights(edge_length, self.sigma)
+
         pyg_data = from_networkx(self.networkx_tree)
         X, y, train_mask, val_mask, test_mask, y_dtype = self.get_features_and_masks()
 
@@ -457,9 +456,11 @@ class NewickDataset(GenericPhyloDataset):
             val_mask=val_mask,
             test_mask=test_mask,
             edge_index=pyg_data.edge_index,
-            # edge_attr=edge_attr # Feature propagation transform breaks with edge attributes, so add them back in before the undirected transform.
+            edge_weight=edge_weight,
+            original_edge_std=original_edge_std,
         )
-        data = self.transform_data(data, edge_length=edge_attr, sigma=self.sigma, add_self_loops=self.add_self_loops)
+
+        data = self.transform_data(data, add_self_loops=self.add_self_loops)
 
         return data
 
