@@ -4,7 +4,8 @@ import unittest
 import pandas as pd
 import torch
 import torch.nn.functional as F
-from phylotraitGNN.GNN_models.GNN_node_classifier import GCN_node_classifier, train_gcn_model, EarlyStopping
+from phylotraitGNN.GNN_models.GNN_node_classifier import GATv2Conv_node_classifier
+from phylotraitGNN.GNN_models.training_helper_functions import EarlyStopping, train_gcn_model
 from torch_geometric.data import Data
 
 from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset
@@ -29,7 +30,7 @@ class TestGCN(unittest.TestCase):
         self.dataset = type("MockDataset", (object,), {"num_features": num_features, "num_classes": num_classes})
 
     def test_train_step(self):
-        model = GCN_node_classifier(self.dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_classifier(self.dataset, hidden_channels=4, dropout_p=0.1)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
         loss_function = F.cross_entropy
 
@@ -38,7 +39,7 @@ class TestGCN(unittest.TestCase):
         self.assertGreaterEqual(train_loss.item(), 0.0)
 
     def test_test_method(self):
-        model = GCN_node_classifier(self.dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_classifier(self.dataset, hidden_channels=4, dropout_p=0.1)
 
         with torch.no_grad():
             test_acc, brier_score = model.test(self.data)
@@ -136,10 +137,11 @@ class TestGCN(unittest.TestCase):
             k_nearest=50
 
         )
-        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+        assert dataset.num_features == 2
+        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
-        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
         early_stopping = EarlyStopping(patience=5, delta=0.01)
         self.assertRaises(ValueError, self.for_a_dataset_and_model, dataset, model,early_stopping)
 
@@ -152,10 +154,10 @@ class TestGCN(unittest.TestCase):
             k_nearest=50, validation_nodes=['t24', 't14', 't27']
 
         )
-        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
-        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
         early_stopping = EarlyStopping(patience=20, delta=0.01)
         self.for_a_dataset_and_model(dataset, model,early_stopping)
 
@@ -169,7 +171,7 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary'
 
         )
-        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
 
@@ -182,7 +184,7 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary'
 
         )
-        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
 
@@ -193,10 +195,10 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary', validation_nodes=['t24', 't14', 't27']
 
         )
-        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
-        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
         early_stopping = EarlyStopping(patience=5, delta=0.01)
         self.for_a_dataset_and_model(dataset, model, early_stopping)
 
@@ -210,7 +212,7 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary'
 
         )
-        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
 
@@ -222,10 +224,10 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary', validation_nodes=['t24', 't14', 't27']
 
         )
-        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
-        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
         early_stopping = EarlyStopping(patience=5, delta=0.01)
         self.for_a_dataset_and_model(dataset, model, early_stopping)
 
@@ -238,7 +240,7 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary'
 
         )
-        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
 
@@ -252,7 +254,7 @@ class TestGCN(unittest.TestCase):
 
         )
 
-        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
         try:
             self.for_a_dataset_and_model(dataset, model)
         except AssertionError:
@@ -269,7 +271,7 @@ class TestGCN(unittest.TestCase):
 
         )
 
-        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
 
         try:
             self.for_a_dataset_and_model(dataset, model)
@@ -287,10 +289,10 @@ class TestGCN(unittest.TestCase):
 
         )
         data = dataset.data
-        model_without_early_stopping = GCN_node_classifier(dataset, hidden_channels=2, dropout_p=0.1)
+        model_without_early_stopping = GATv2Conv_node_classifier(dataset, hidden_channels=2, dropout_p=0.1)
         train_gcn_model(model_without_early_stopping, data, epochs=1000, plot_loss=True)
 
-        model = GCN_node_classifier(dataset, hidden_channels=2, dropout_p=0.1)
+        model = GATv2Conv_node_classifier(dataset, hidden_channels=2, dropout_p=0.1)
         early_stopping = EarlyStopping(patience=10, delta=0.01)
         train_gcn_model(model, data, epochs=100, plot_loss=True,early_stopping=early_stopping)
 

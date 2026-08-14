@@ -1,19 +1,14 @@
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import GATv2Conv
+from torch_geometric.nn import GATv2Conv, GCNConv
 
 from phylotraitGNN.GNN_models import test_binary_GNN_outputs
 from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset
 
 
-class GCN_node_classifier(torch.nn.Module):
-    def __init__(self, dataset, hidden_channels, dropout_p):
+class MyGNNModels(torch.nn.Module):
+    def __init__(self):
         super().__init__()
-        # Shaked Brody et al., ‘How Attentive Are Graph Attention Networks?’,
-        # arXiv:2105.14491, preprint, arXiv, 31 January 2022, https://doi.org/10.48550/arXiv.2105.14491.
-        # Note this adds self loops by default, the attention function applied to neighbours then includes the current node.
-        self.conv1 = GATv2Conv(dataset.num_features, hidden_channels, edge_dim=1, dropout=dropout_p)
-        self.conv2 = GATv2Conv(hidden_channels, dataset.num_classes, edge_dim=1, dropout=dropout_p)
 
     def forward(self, x, edge_index, edge_attr):
         x = self.conv1(x, edge_index, edge_attr=edge_attr)
@@ -45,97 +40,24 @@ class GCN_node_classifier(torch.nn.Module):
         return test_acc, b_score
 
 
-class EarlyStopping:
-    # Modified from: https://www.geeksforgeeks.org/deep-learning/how-to-handle-overfitting-in-pytorch-models-using-early-stopping/
-    def __init__(self, patience=5, delta=0, epoch_minimum=10):
-        self.patience = patience
-        self.delta = delta  # Minimum change in the monitored quantity to qualify as an improvement
-        self.best_score = None
-        self.early_stop = False
-        self.counter = 0
-        self.total_counter = 0
-        self.epoch_minimum = epoch_minimum
-        self.best_model_state = None
-
-    def __call__(self, val_loss, model):
-        score = -val_loss
-        self.total_counter += 1
-
-        if self.best_score is None:
-            self.best_score = score
-            self.best_model_state = model.state_dict()
-        elif score < self.best_score + self.delta:
-            self.counter += 1
-            if (self.counter >= self.patience) and self.total_counter >= self.epoch_minimum:
-                self.early_stop = True
-        else:
-            self.best_score = score
-            self.best_model_state = model.state_dict()
-            self.counter = 0
-
-    def load_best_model(self, model):
-        model.load_state_dict(self.best_model_state)
+class GATv2Conv_node_classifier(MyGNNModels):
+    def __init__(self, dataset, hidden_channels, dropout_p):
+        super().__init__()
+        # Shaked Brody et al., ‘How Attentive Are Graph Attention Networks?’,
+        # arXiv:2105.14491, preprint, arXiv, 31 January 2022, https://doi.org/10.48550/arXiv.2105.14491.
+        # Note this adds self loops by default, the attention function applied to neighbours then includes the current node.
+        self.conv1 = GATv2Conv(dataset.num_features, hidden_channels, edge_dim=1, dropout=dropout_p)
+        self.conv2 = GATv2Conv(hidden_channels, dataset.num_classes, edge_dim=1, dropout=dropout_p)
 
 
-def train_gcn_model(model, data, epochs, plot_loss=False, early_stopping=None):
-    if early_stopping is not None and not (hasattr(data, 'val_mask')):
-        raise ValueError('Early stopping is only supported for datasets with a validation mask.')
-
-    loss_function = torch.nn.CrossEntropyLoss()
-    optimizer_class = torch.optim.Adam
-    optimizer_kwargs = {'lr': 0.01, 'weight_decay': 5e-4}
-    optimizer = optimizer_class(model.parameters(), **optimizer_kwargs)
-
-    train_losses = []
-    val_losses = []
-    for epoch in range(1, epochs):
-        train_loss, val_loss = model.train_step(data, optimizer, loss_function)
-        train_losses.append(train_loss.detach().cpu().numpy())
-        if val_loss is not None:
-            val_losses.append(val_loss.detach().cpu().numpy())
-            if early_stopping is not None:
-                early_stopping(val_loss, model)
-                if early_stopping.early_stop:
-                    print("Early stopping")
-                    break
-    if plot_loss:
-        import matplotlib.pyplot as plt
-        plt.plot(train_losses, label='train')
-        if len(val_losses) > 0:
-            plt.plot(val_losses, label='val')
-        plt.legend()
-        plt.show()
-    if early_stopping is not None:
-        early_stopping.load_best_model(model)
-
-
-def predict_node_classes(dataset, epochs, hidden_channels, dropout_p, plot_loss=False):
-    model = GCN_node_classifier(dataset, hidden_channels=hidden_channels, dropout_p=dropout_p)
-    data = dataset.data
-    # Where y values are all the same, instead of training the model, out should be a tensor with two columns, one for each class.
-    # Values in the column denoting the class that appears in y should be 1, and all other values should be 0.
-    if torch.unique(data.y).shape[0] == 1:
-        out = torch.zeros((data.y.shape[0], 2))
-        if torch.unique(data.y) == 0:
-            # set first column of out to all 1s
-            out[:, 0] = 1
-        elif torch.unique(data.y) == 1:
-            out[:, 1] = 1
-        else:
-            raise ValueError('y must contain only 0 or 1')
-        return out
-    else:
-        train_gcn_model(model, data, epochs, plot_loss=plot_loss)
-
-        model.eval()  # Set model to evaluation mode.
-        out_ = model(data.x, data.edge_index, edge_attr=data.edge_weight)
-        probs = F.softmax(out_, dim=1)  # Convert logits to probabilities.
-        assert (torch.all(probs >= 0.0) and torch.all(probs <= 1.0))
-
-        # Add assertion that rows in pred proba add up to 1
-        assert (probs.sum(dim=1).max().item() < 1.01)
-        assert (probs.sum(dim=1).max().item() > 0.99)
-    return probs
+class GCNConv_node_classifier(MyGNNModels):
+    def __init__(self, dataset, hidden_channels, dropout_p):
+        super().__init__()
+        # Shaked Brody et al., ‘How Attentive Are Graph Attention Networks?’,
+        # arXiv:2105.14491, preprint, arXiv, 31 January 2022, https://doi.org/10.48550/arXiv.2105.14491.
+        # Note this adds self loops by default, the attention function applied to neighbours then includes the current node.
+        self.conv1 = GCNConv(dataset.num_features, hidden_channels, edge_dim=1, dropout=dropout_p)
+        self.conv2 = GCNConv(hidden_channels, dataset.num_classes, edge_dim=1, dropout=dropout_p)
 
 
 def main():
