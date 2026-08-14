@@ -29,18 +29,34 @@ class TestGCN(unittest.TestCase):
         # Add assertion that rows in pred proba add up to 1
         self.assertAlmostEqual(out_.sum(dim=1).max().item(), 1.0, places=6)
 
+        # Check train outputs preserved
+        train_outs = out_[data.train_mask][:, 1]
+        train_ins = dataset.data.y[dataset.data.train_mask]
+        assert torch.equal(train_outs, train_ins)
+
+        # Check test outputs not leaked
+        test_outs = out_[data.test_mask][:, 1]
+        test_ins = dataset.data.y[dataset.data.test_mask]
+        assert torch.any(torch.not_equal(test_outs, test_ins))
+
+        if hasattr(dataset.data, 'val_mask'):
+            val_outs = out_[data.val_mask][:, 1]
+            val_ins = dataset.data.y[dataset.data.val_mask]
+            assert torch.any(torch.not_equal(val_outs, val_ins))
+
+        # Check the function getting the dataframe
         predictions = dataset.get_model_prediction_outputs_in_feature_order(out_)
         pd.testing.assert_index_equal(predictions.index, dataset.feature_with_missing_target_df.index)
 
         # This check ensures that the output predictions properly preserve the order of the features in the input dataset.
         # And also preserve the training values.
-
-        feature_data_without_nans = dataset.feature_with_missing_target_df.dropna(subset=[dataset.target_name])
-        training_predictions_like_df = predictions[[1]].rename(columns={1: dataset.target_name})
-        training_predictions_like_df = training_predictions_like_df[training_predictions_like_df.index.isin(feature_data_without_nans.index)]
-        training_predictions_like_df[dataset.target_name] = training_predictions_like_df[dataset.target_name].astype(float)
-        feature_data_without_nans[dataset.target_name] = feature_data_without_nans[dataset.target_name].astype(float)
-        pd.testing.assert_frame_equal(training_predictions_like_df, feature_data_without_nans)
+        if not hasattr(dataset.data, 'val_mask'):
+            feature_data_without_nans = dataset.feature_with_missing_target_df.dropna(subset=[dataset.target_name])
+            training_predictions_like_df = predictions[[1]].rename(columns={1: dataset.target_name})
+            training_predictions_like_df = training_predictions_like_df[training_predictions_like_df.index.isin(feature_data_without_nans.index)]
+            training_predictions_like_df[dataset.target_name] = training_predictions_like_df[dataset.target_name].astype(float)
+            feature_data_without_nans[dataset.target_name] = feature_data_without_nans[dataset.target_name].astype(float)
+            pd.testing.assert_frame_equal(training_predictions_like_df, feature_data_without_nans)
 
         if dataset.ground_truth_df is not None:
             # Test data isn't leaked
@@ -56,7 +72,6 @@ class TestGCN(unittest.TestCase):
                 pass
             else:
                 raise AssertionError("Ground truth and predictions should not be the same for missing values")
-
 
     def test_Newick_with_no_features(self):
         dataset = NewickDataset(
@@ -81,12 +96,31 @@ class TestGCN(unittest.TestCase):
         )
         self.for_model_outputs(propagate_labels(dataset), dataset)
 
+        dataset = DistanceMatrixDataset(
+            tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary_no_features/tree_distances.csv',
+            feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary_no_features/mcar_values.csv',
+            ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary_no_features/ground_truth.csv',
+            target_name='trait_ARD',
+            binary_or_continuous='binary', add_self_loops=True, validation_nodes=['t88', 't75', 't74']
+
+        )
+        self.for_model_outputs(propagate_labels(dataset), dataset)
+
     def test_Newick_with_no_gt(self):
         dataset = NewickDataset(
             newick_tree_path='../../parsing_tree_data/unittest_data/binary_no_features/tree.tre',
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary_no_features/mcar_values.csv',
             target_name='trait_ARD',
             binary_or_continuous='binary', add_self_loops=True
+
+        )
+        self.for_model_outputs(propagate_labels(dataset), dataset)
+
+        dataset = NewickDataset(
+            newick_tree_path='../../parsing_tree_data/unittest_data/binary_no_features/tree.tre',
+            feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary_no_features/mcar_values.csv',
+            target_name='trait_ARD',
+            binary_or_continuous='binary', add_self_loops=True, validation_nodes=['t88', 't75', 't2']
 
         )
         self.for_model_outputs(propagate_labels(dataset), dataset)
@@ -162,7 +196,7 @@ class TestGCN(unittest.TestCase):
         node_outputs = output[node_mask]
         assert torch.equal(node_outputs, torch.tensor([[0.5, 0.5], [1, 0], [0, 1]]))
         assert torch.equal(dataset.data.y[train_mask], output[train_mask][:,
-                                                     1])  # This used to break because of https://github.com/pyg-team/pytorch_geometric/issues/10627#issuecomment-4018763551
+                                                       1])  # This used to break because of https://github.com/pyg-team/pytorch_geometric/issues/10627#issuecomment-4018763551
         #
         # raise NotImplementedError('Add tests for num_layers = 2 etc')
 

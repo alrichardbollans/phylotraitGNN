@@ -4,7 +4,7 @@ import unittest
 import pandas as pd
 import torch
 import torch.nn.functional as F
-from phylotraitGNN.GNN_models.GNN_node_classifier import GCN_node_classifier, train_gcn_model
+from phylotraitGNN.GNN_models.GNN_node_classifier import GCN_node_classifier, train_gcn_model, EarlyStopping
 from torch_geometric.data import Data
 
 from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset
@@ -33,9 +33,9 @@ class TestGCN(unittest.TestCase):
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
         loss_function = F.cross_entropy
 
-        loss = model.train_step(self.data, optimizer, loss_function)
-        self.assertIsInstance(loss.item(), float)
-        self.assertGreaterEqual(loss.item(), 0.0)
+        train_loss, val_lass = model.train_step(self.data, optimizer, loss_function)
+        self.assertIsInstance(train_loss.item(), float)
+        self.assertGreaterEqual(train_loss.item(), 0.0)
 
     def test_test_method(self):
         model = GCN_node_classifier(self.dataset, hidden_channels=4, dropout_p=0.1)
@@ -68,6 +68,17 @@ class TestGCN(unittest.TestCase):
         # Add assertion that rows in pred proba add up to 1
         self.assertAlmostEqual(probs.sum(dim=1).max().item(), 1.0, places=6)
 
+        # Check test outputs not leaked
+        test_outs = out_[data.test_mask][:, 1]
+        test_ins = dataset.data.y[dataset.data.test_mask]
+        assert torch.any(torch.not_equal(test_outs, test_ins))
+
+        if hasattr(dataset.data, 'val_mask'):
+            val_outs = out_[data.val_mask][:, 1]
+            val_ins = dataset.data.y[dataset.data.val_mask]
+            assert torch.any(torch.not_equal(val_outs, val_ins))
+
+        # Check the function getting the dataframe
         predictions = dataset.get_model_prediction_outputs_in_feature_order(probs)
         pd.testing.assert_index_equal(predictions.index, dataset.feature_with_missing_target_df.index)
 
@@ -86,12 +97,14 @@ class TestGCN(unittest.TestCase):
             else:
                 raise AssertionError("Ground truth and predictions should not be the same for missing values")
 
-    def for_a_dataset_and_model(self, dataset, model):
+    def for_a_dataset_and_model(self, dataset, model,early_stopping=None):
 
         data = dataset.data
         test_acc_1, brier1 = model.test(data)
-
-        train_gcn_model(model, data, epochs=100)
+        if early_stopping is not None:
+            train_gcn_model(model, data, epochs=100, early_stopping=early_stopping)
+        else:
+            train_gcn_model(model, data, epochs=100)
 
         # Check training has changed scores
         test_acc_, brier = model.test(data)
@@ -126,6 +139,25 @@ class TestGCN(unittest.TestCase):
         model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
+        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+        early_stopping = EarlyStopping(patience=5, delta=0.01)
+        self.assertRaises(ValueError, self.for_a_dataset_and_model, dataset, model,early_stopping)
+
+        dataset = DistanceMatrixDataset(
+            tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary/tree_distances.csv',
+            feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
+            ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary/ground_truth.csv',
+            target_name='trait_BM_trend_scaled',
+            binary_or_continuous='binary',
+            k_nearest=50, validation_nodes=['t24', 't14', 't27']
+
+        )
+        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+
+        self.for_a_dataset_and_model(dataset, model)
+        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+        early_stopping = EarlyStopping(patience=5, delta=0.01)
+        self.for_a_dataset_and_model(dataset, model,early_stopping)
 
     def test_distance_training_process_full(self):
 
@@ -154,6 +186,20 @@ class TestGCN(unittest.TestCase):
 
         self.for_a_dataset_and_model(dataset, model)
 
+        dataset = DistanceMatrixDataset(
+            tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary/tree_distances.csv',
+            feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
+            target_name='trait_BM_trend_scaled',
+            binary_or_continuous='binary', validation_nodes=['t24', 't14', 't27']
+
+        )
+        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+
+        self.for_a_dataset_and_model(dataset, model)
+        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+        early_stopping = EarlyStopping(patience=5, delta=0.01)
+        self.for_a_dataset_and_model(dataset, model, early_stopping)
+
     def test_newick_training_process(self):
 
         dataset = NewickDataset(
@@ -167,6 +213,21 @@ class TestGCN(unittest.TestCase):
         model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
+
+        dataset = NewickDataset(
+            newick_tree_path='../../parsing_tree_data/unittest_data/binary/tree.tre',
+            feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
+            ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary/ground_truth.csv',
+            target_name='trait_BM_trend_scaled',
+            binary_or_continuous='binary', validation_nodes=['t24', 't14', 't27']
+
+        )
+        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+
+        self.for_a_dataset_and_model(dataset, model)
+        model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+        early_stopping = EarlyStopping(patience=5, delta=0.01)
+        self.for_a_dataset_and_model(dataset, model, early_stopping)
 
     def test_newick_training_process_not_gt(self):
 
@@ -215,6 +276,23 @@ class TestGCN(unittest.TestCase):
         except AssertionError:
             print('No features, so this will break.')
             pass
+
+    def test_early_stopping(self):
+        dataset = NewickDataset(
+            newick_tree_path='../../parsing_tree_data/unittest_data/binary/tree.tre',
+            feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
+            ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary/ground_truth.csv',
+            target_name='trait_BM_trend_scaled',
+            binary_or_continuous='binary', validation_nodes=['t24', 't14', 't27','t36','t94','t3']
+
+        )
+        data = dataset.data
+        model_without_early_stopping = GCN_node_classifier(dataset, hidden_channels=2, dropout_p=0.1)
+        train_gcn_model(model_without_early_stopping, data, epochs=1000, plot_loss=True)
+
+        model = GCN_node_classifier(dataset, hidden_channels=2, dropout_p=0.1)
+        early_stopping = EarlyStopping(patience=10, delta=0.01)
+        train_gcn_model(model, data, epochs=100, plot_loss=True,early_stopping=early_stopping)
 
 
 if __name__ == "__main__":

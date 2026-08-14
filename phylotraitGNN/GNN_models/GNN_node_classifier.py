@@ -18,17 +18,24 @@ class GCN_node_classifier(torch.nn.Module):
     def forward(self, x, edge_index, edge_attr):
         x = self.conv1(x, edge_index, edge_attr=edge_attr)
         x = x.relu()
-        x = self.conv2(x, edge_index, edge_attr=edge_attr) # There typically isn't a separate, fully-connected (linear) layer after the last GNN layer, because the final convolution is trained to map embeddings directly to class logits
+        x = self.conv2(x, edge_index,
+                       edge_attr=edge_attr)  # There typically isn't a separate, fully-connected (linear) layer after the last GNN layer, because the final convolution is trained to map embeddings directly to class logits
         return x
 
     def train_step(self, data, optimizer, loss_function):
         self.train()
         optimizer.zero_grad()  # Clear gradients.
         out_ = self(data.x, data.edge_index, data.edge_weight)  # Perform a single forward pass.
-        loss_ = loss_function(out_[data.train_mask], data.y[data.train_mask])  # Compute the loss solely based on the training nodes.
-        loss_.backward()  # Derive gradients.
+        train_loss_ = loss_function(out_[data.train_mask], data.y[data.train_mask])  # Compute the loss solely based on the training nodes.
+        train_loss_.backward()  # Derive gradients.
         optimizer.step()  # Update parameters based on gradients.
-        return loss_
+
+        if hasattr(data, 'val_mask'):
+            self.eval()
+            val_loss_ = loss_function(out_[data.val_mask], data.y[data.val_mask])
+        else:
+            val_loss_ = None
+        return train_loss_, val_loss_
 
     def test(self, data):
         self.eval()
@@ -38,20 +45,71 @@ class GCN_node_classifier(torch.nn.Module):
         return test_acc, b_score
 
 
-def train_gcn_model(model, data, epochs,verbose=0):
+class EarlyStopping:
+    # Modified from: https://www.geeksforgeeks.org/deep-learning/how-to-handle-overfitting-in-pytorch-models-using-early-stopping/
+    def __init__(self, patience=5, delta=0, epoch_minimum=10):
+        self.patience = patience
+        self.delta = delta  # Minimum change in the monitored quantity to qualify as an improvement
+        self.best_score = None
+        self.early_stop = False
+        self.counter = 0
+        self.total_counter = 0
+        self.epoch_minimum = epoch_minimum
+        self.best_model_state = None
+
+    def __call__(self, val_loss, model):
+        score = -val_loss
+        self.total_counter += 1
+
+        if self.best_score is None:
+            self.best_score = score
+            self.best_model_state = model.state_dict()
+        elif score < self.best_score + self.delta:
+            self.counter += 1
+            if (self.counter >= self.patience) and self.total_counter >= self.epoch_minimum:
+                self.early_stop = True
+        else:
+            self.best_score = score
+            self.best_model_state = model.state_dict()
+            self.counter = 0
+
+    def load_best_model(self, model):
+        model.load_state_dict(self.best_model_state)
+
+
+def train_gcn_model(model, data, epochs, plot_loss=False, early_stopping=None):
+    if early_stopping is not None and not (hasattr(data, 'val_mask')):
+        raise ValueError('Early stopping is only supported for datasets with a validation mask.')
 
     loss_function = torch.nn.CrossEntropyLoss()
     optimizer_class = torch.optim.Adam
     optimizer_kwargs = {'lr': 0.01, 'weight_decay': 5e-4}
     optimizer = optimizer_class(model.parameters(), **optimizer_kwargs)
 
+    train_losses = []
+    val_losses = []
     for epoch in range(1, epochs):
-        loss = model.train_step(data, optimizer, loss_function)
-        if verbose > 0:
-            print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}')
+        train_loss, val_loss = model.train_step(data, optimizer, loss_function)
+        train_losses.append(train_loss.detach().cpu().numpy())
+        if val_loss is not None:
+            val_losses.append(val_loss.detach().cpu().numpy())
+            if early_stopping is not None:
+                early_stopping(val_loss, model)
+                if early_stopping.early_stop:
+                    print("Early stopping")
+                    break
+    if plot_loss:
+        import matplotlib.pyplot as plt
+        plt.plot(train_losses, label='train')
+        if len(val_losses) > 0:
+            plt.plot(val_losses, label='val')
+        plt.legend()
+        plt.show()
+    if early_stopping is not None:
+        early_stopping.load_best_model(model)
 
 
-def predict_node_classes(dataset,epochs, hidden_channels, dropout_p):
+def predict_node_classes(dataset, epochs, hidden_channels, dropout_p, plot_loss=False):
     model = GCN_node_classifier(dataset, hidden_channels=hidden_channels, dropout_p=dropout_p)
     data = dataset.data
     # Where y values are all the same, instead of training the model, out should be a tensor with two columns, one for each class.
@@ -67,7 +125,7 @@ def predict_node_classes(dataset,epochs, hidden_channels, dropout_p):
             raise ValueError('y must contain only 0 or 1')
         return out
     else:
-        train_gcn_model(model, data, epochs)
+        train_gcn_model(model, data, epochs, plot_loss=plot_loss)
 
         model.eval()  # Set model to evaluation mode.
         out_ = model(data.x, data.edge_index, edge_attr=data.edge_weight)
@@ -78,6 +136,7 @@ def predict_node_classes(dataset,epochs, hidden_channels, dropout_p):
         assert (probs.sum(dim=1).max().item() < 1.01)
         assert (probs.sum(dim=1).max().item() > 0.99)
     return probs
+
 
 def main():
     dataset = DistanceMatrixDataset(

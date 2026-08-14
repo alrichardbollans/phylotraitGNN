@@ -145,8 +145,9 @@ class GenericPhyloDataset(Dataset):
         assert (
                    self.data.test_mask).sum() > 0, "No test nodes found. feature_csv_path_with_missing_target is expected to have missing values for test nodes."
         assert (self.data.train_mask & self.data.test_mask).sum() == 0  # should be 0
-        assert (self.data.val_mask & self.data.test_mask).sum() == 0  # should be 0
-        assert (self.data.train_mask & self.data.val_mask).sum() == 0  # should be 0
+        if hasattr(self.data, 'val_mask'):
+            assert (self.data.val_mask & self.data.test_mask).sum() == 0  # should be 0
+            assert (self.data.train_mask & self.data.val_mask).sum() == 0  # should be 0
 
         # No train or test nodes should have missing target values
         # Also check for the placeholder nan value
@@ -216,21 +217,23 @@ class GenericPhyloDataset(Dataset):
 
         if self.validation_nodes is not None:
             # Make proportion of train_mask into a val_mask
-            val_mask = torch.tensor(
+            temp_val_mask = torch.tensor(
                 np.where((y_with_missing_target_df.index.isin(self.validation_nodes)),
                          True, False), dtype=torch.bool)
+            val_mask = temp_val_mask
         else:
             # Make val mask a torch.tensor of False which is the same length as X and y
-            val_mask = torch.zeros(len(X), dtype=torch.bool)
+            temp_val_mask = torch.zeros(len(X), dtype=torch.bool)
+            val_mask = None
 
         train_mask = torch.tensor(
             np.where((y_with_missing_target_df[self.target_name].isna() | y_with_missing_target_df.index.isin(
-                node_target_df.index) | val_mask.cpu().numpy()),
+                node_target_df.index) | temp_val_mask.cpu().numpy()),
                      False, True), dtype=torch.bool)
 
         test_mask = torch.tensor(
             np.where((~y_with_missing_target_df[self.target_name].isna() | y_with_missing_target_df.index.isin(
-                node_target_df.index) | val_mask.cpu().numpy()),
+                node_target_df.index) | temp_val_mask.cpu().numpy()),
                      False, True), dtype=torch.bool)
         if self.binary_or_continuous == 'continuous':
             y_dtype = torch.float
@@ -248,7 +251,7 @@ class GenericPhyloDataset(Dataset):
     def get(self, idx):
         return self.data
 
-    def get_model_prediction_outputs_in_feature_order(self, predictions):
+    def get_model_prediction_outputs_in_feature_order(self, predictions) -> pd.DataFrame:
         # Predictions are output in order of self.node_names, which contains nodes not in feature data and not in same order
         # This function outputs a dataframe with the same order as the feature dataframe.
         prediction_df = pd.DataFrame(predictions.detach().cpu().numpy(), index=pd.Series(self.node_names, name='accepted_species'))
