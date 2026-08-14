@@ -156,7 +156,7 @@ class TestGCN(unittest.TestCase):
 
         self.for_a_dataset_and_model(dataset, model)
         model = GCN_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
-        early_stopping = EarlyStopping(patience=5, delta=0.01)
+        early_stopping = EarlyStopping(patience=20, delta=0.01)
         self.for_a_dataset_and_model(dataset, model,early_stopping)
 
     def test_distance_training_process_full(self):

@@ -40,11 +40,16 @@ class GenericPhyloDataset(Dataset):
                 predictions or procedures.
         """
         self.binary_or_continuous = binary_or_continuous
+
+        if binary_or_continuous not in ['binary', 'continuous']:
+            raise ValueError(f"binary_or_continuous must be 'binary' or 'continuous', not {binary_or_continuous}")
+
         self.target_name = target_name
 
         # Read the feature CSV file. It holds
         self.feature_csv_path_with_missing_target = feature_csv_path_with_missing_target
         self.feature_with_missing_target_df = pd.read_csv(feature_csv_path_with_missing_target, index_col=0)
+        self.index_name = self.feature_with_missing_target_df.index.name
         self.ground_truth_csv_path = ground_truth_csv_path
         if ground_truth_csv_path is not None:
             self.ground_truth_df = pd.read_csv(ground_truth_csv_path, index_col=0)
@@ -170,10 +175,6 @@ class GenericPhyloDataset(Dataset):
         X_feature_df = self.feature_with_missing_target_df.drop(columns=[self.target_name])
 
         feature_names = X_feature_df.columns
-        # try:
-        #     assert len(feature_names) > 0
-        # except AssertionError:
-        #     raise ValueError("Input data tables must have at least one feature (non target) column.")
 
         if self.ground_truth_df is not None:
             pd.testing.assert_frame_equal(X_feature_df, self.ground_truth_df[feature_names])
@@ -181,36 +182,36 @@ class GenericPhyloDataset(Dataset):
             y_df = self.ground_truth_df[[self.target_name]]
         else:
             y_df = self.feature_with_missing_target_df[[self.target_name]]
-
-        mode_training_value = y_with_missing_target_df[self.target_name].dropna().mode()[0]
-        node_target_df = pd.DataFrame()
-        if hasattr(self, 'nodes_that_arent_tips'):
+        if self.binary_or_continuous == 'binary':
+            avg_training_value = y_with_missing_target_df[self.target_name].dropna().mode()[0]
+        elif self.binary_or_continuous == 'continuous':
+            avg_training_value = y_with_missing_target_df[self.target_name].dropna().mean()
+        nan_target_df = pd.DataFrame()
+        nodes_without_feature_values = [name for name in self.node_names if name not in X_feature_df.index]
+        if len(nodes_without_feature_values)>0:
             ## When there are nodes that arent tips, these have no feature values.
             ## For features, give them a nan value. These will be filled in later by feature propagation.
 
             rows, cols = X_feature_df.shape
-            NAN_node_features = pd.DataFrame([[np.nan] * cols] * (len(self.nodes_that_arent_tips)), index=self.nodes_that_arent_tips)
-            NAN_node_features.index.name = 'accepted_species'
-            NAN_node_features.columns = feature_names
-            X_feature_df = pd.concat([X_feature_df, NAN_node_features], axis=0)
+            NAN_features = pd.DataFrame([[np.nan] * cols] * (len(nodes_without_feature_values)), index=nodes_without_feature_values)
+            NAN_features.index.name = self.index_name
+            NAN_features.columns = feature_names
+            X_feature_df = pd.concat([X_feature_df, NAN_features], axis=0)
 
-            ## For target, Give these the mode training feature value.
-            ## The actual value shouldn't really matter as masks are used to exclude these nodes from training and testing.
-            ## and also include in both masks as False.? Or in train mask?
-
-            node_target_df = pd.DataFrame([[mode_training_value]] * (len(self.nodes_that_arent_tips)), index=self.nodes_that_arent_tips,
+            ## For target, Give these the avg training feature value.
+            nan_target_df = pd.DataFrame([[avg_training_value]] * (len(nodes_without_feature_values)), index=nodes_without_feature_values,
                                           columns=[self.target_name])
-            node_target_df.index.name = 'accepted_species'
-            y_df = pd.concat([y_df, node_target_df], axis=0)
+            nan_target_df.index.name = self.index_name
+            y_df = pd.concat([y_df, nan_target_df], axis=0)
 
-            y_with_missing_target_df = pd.concat([y_with_missing_target_df, node_target_df], axis=0)
+            y_with_missing_target_df = pd.concat([y_with_missing_target_df, nan_target_df], axis=0)
 
         # Make sure all nodes are present in both feature and target dataframes, and  dataframes have same order
         # Both X and y are sorted by self.node_names which provides the order for thre resulting predictions.
         X = X_feature_df.loc[self.node_names].values  # Align with node names
 
         if self.ground_truth_df is None:
-            y_df[self.target_name] = y_df[self.target_name].fillna(mode_training_value)
+            y_df[self.target_name] = y_df[self.target_name].fillna(avg_training_value)
         y = y_df.loc[self.node_names][self.target_name].values  # Align with node names
 
         y_with_missing_target_df = y_with_missing_target_df.loc[self.node_names]  # Align with node names
@@ -228,12 +229,12 @@ class GenericPhyloDataset(Dataset):
 
         train_mask = torch.tensor(
             np.where((y_with_missing_target_df[self.target_name].isna() | y_with_missing_target_df.index.isin(
-                node_target_df.index) | temp_val_mask.cpu().numpy()),
+                nan_target_df.index) | temp_val_mask.cpu().numpy()),
                      False, True), dtype=torch.bool)
 
         test_mask = torch.tensor(
             np.where((~y_with_missing_target_df[self.target_name].isna() | y_with_missing_target_df.index.isin(
-                node_target_df.index) | temp_val_mask.cpu().numpy()),
+                nan_target_df.index) | temp_val_mask.cpu().numpy()),
                      False, True), dtype=torch.bool)
         if self.binary_or_continuous == 'continuous':
             y_dtype = torch.float
@@ -392,7 +393,6 @@ class NewickDataset(GenericPhyloDataset):
             newick_tree_path (str): File path to the Newick tree representation.
             networkx_tree: A networkx tree parsed from the Newick file.
             node_names (list): List of all node names in the tree.
-            nodes_that_arent_tips (list): Subset of node names that are internal nodes, not tree tips.
             data: Processed data after initialization and validation.
 
         Parameters:
@@ -411,21 +411,12 @@ class NewickDataset(GenericPhyloDataset):
             validation_nodes (list | None, optional): A list of nodes reserved for
                 validation purposes. Defaults to None.
 
-        Raises:
-            ValueError: If no internal nodes are found in the tree structure. Nodes
-                should be named with the prefix 'Node_' followed by a unique identifier.
         """
         self.newick_tree_path = newick_tree_path
 
         # Read the tree file
         self.networkx_tree = self.newick_to_networkx(newick_tree_path)
-        # Nodes should all be named 'Node_x' where x is the node number
-        # Can set this in R with `paste("Node",1L:tree$Nnode, sep='_') -> tree$node.label`
-        # In future, might want to set this using the feature dataframe so the distinction is to do with known/unknown features rather than tips/nodes.
         self.node_names = list(self.networkx_tree.nodes)
-        self.nodes_that_arent_tips = [n for n in self.node_names if 'Node_' in n]
-        if len(self.nodes_that_arent_tips) == 0:
-            raise ValueError("No nodes found in tree that aren't tips. Nodes should be named 'Node_x' where x is the node number.")
 
         super().__init__(feature_csv_path_with_missing_target,
                          target_name,
