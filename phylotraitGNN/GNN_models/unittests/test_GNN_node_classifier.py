@@ -4,7 +4,7 @@ import unittest
 import pandas as pd
 import torch
 import torch.nn.functional as F
-from phylotraitGNN.GNN_models.GNN_node_classifier import GATv2Conv_node_classifier
+from phylotraitGNN.GNN_models.GNN_node_classifier import GATv2Conv_node_classifier, GCNConv_node_classifier
 from phylotraitGNN.GNN_models.training_helper_functions import EarlyStopping, train_gcn_model
 from torch_geometric.data import Data
 
@@ -117,7 +117,11 @@ class TestGCN(unittest.TestCase):
         self.assertNotEqual(brier1, brier)
 
         # Check it's not just outputting the same values
-        out_ = model(data.x, data.edge_index, edge_attr=data.edge_weight)
+        try:
+            out_ = model(data.x, data.edge_index, edge_attr=data.edge_weight)
+        except TypeError:
+            out_ = model(data.x, data.edge_index, edge_weight=data.edge_weight)
+
         self.for_model_outputs(out_, dataset)
 
         # Test edge attributes are being used
@@ -145,6 +149,11 @@ class TestGCN(unittest.TestCase):
         model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
+
+        model = GCNConv_node_classifier(dataset, hidden_channels=4)
+        self.for_a_dataset_and_model(dataset, model)
+
+
         model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
         early_stopping = EarlyStopping(patience=5, delta=0.01)
         self.assertRaises(ValueError, self.for_a_dataset_and_model, dataset, model, early_stopping)
@@ -179,6 +188,9 @@ class TestGCN(unittest.TestCase):
 
         self.for_a_dataset_and_model(dataset, model)
 
+        model = GCNConv_node_classifier(dataset, hidden_channels=4)
+        self.for_a_dataset_and_model(dataset, model)
+
     def test_distance_training_process_no_gt(self):
 
         dataset = DistanceMatrixDataset(
@@ -189,7 +201,9 @@ class TestGCN(unittest.TestCase):
 
         )
         model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
+        self.for_a_dataset_and_model(dataset, model)
 
+        model = GCNConv_node_classifier(dataset, hidden_channels=4)
         self.for_a_dataset_and_model(dataset, model)
 
         dataset = DistanceMatrixDataset(
@@ -220,6 +234,9 @@ class TestGCN(unittest.TestCase):
 
         self.for_a_dataset_and_model(dataset, model)
 
+        model = GCNConv_node_classifier(dataset, hidden_channels=4)
+        self.for_a_dataset_and_model(dataset, model)
+
         dataset = NewickDataset(
             newick_tree_path='../../parsing_tree_data/unittest_data/binary/tree.tre',
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
@@ -248,6 +265,9 @@ class TestGCN(unittest.TestCase):
 
         self.for_a_dataset_and_model(dataset, model)
 
+        model = GCNConv_node_classifier(dataset, hidden_channels=4)
+        self.for_a_dataset_and_model(dataset, model)
+
     def test_Newick_with_no_features(self):
         dataset = NewickDataset(
             newick_tree_path='../../parsing_tree_data/unittest_data/binary_no_features/tree.tre',
@@ -265,6 +285,8 @@ class TestGCN(unittest.TestCase):
             print('No features, so this will break.')
             pass
 
+        model = GCNConv_node_classifier(dataset, hidden_channels=4)
+        self.assertRaises(AssertionError, self.for_a_dataset_and_model, dataset, model)
     def test_distance_with_no_features(self):
         dataset = DistanceMatrixDataset(
             tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary_no_features/tree_distances.csv',

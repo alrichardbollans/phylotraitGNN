@@ -212,7 +212,6 @@ class GenericPhyloDataset(Dataset):
         y_with_missing_target_df = y_with_missing_target_df.loc[self.node_names]  # Align with node names
 
         if self.validation_nodes is not None:
-            # Make proportion of train_mask into a val_mask
             temp_val_mask = torch.tensor(
                 np.where((y_with_missing_target_df.index.isin(self.validation_nodes)),
                          True, False), dtype=torch.bool)
