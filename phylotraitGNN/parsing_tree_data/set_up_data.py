@@ -138,7 +138,9 @@ class GenericPhyloDataset(Dataset):
                                           self.feature_with_missing_target_df.dropna(subset=[self.target_name]), check_dtype=False)
         if self.binary_or_continuous == 'binary':
             assert self.num_classes <= 2
-
+        else:
+            # check that data.y are floats
+            assert self.data.y.dtype == torch.float
         # print(data.train_mask.sum(), data.test_mask.sum())
         assert (
                    self.data.train_mask).sum() > 0, "No training nodes found. feature_csv_path_with_missing_target is expected to have missing values for test nodes, and have some training nodes with values."

@@ -58,7 +58,3 @@ def train_gcn_model(model, data, loss_function, optimizer, epochs, plot_loss=Fal
         plt.show()
     if early_stopping is not None:
         early_stopping.load_best_model(model)
-
-
-if __name__ == '__main__':
-    main()

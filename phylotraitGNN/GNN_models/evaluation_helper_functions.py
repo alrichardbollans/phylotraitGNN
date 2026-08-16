@@ -1,4 +1,5 @@
-from sklearn.metrics import brier_score_loss
+import torch
+from sklearn.metrics import brier_score_loss, mean_absolute_error
 import torch.nn.functional as F
 
 
@@ -41,5 +42,24 @@ def test_binary_GNN_outputs(out_, data, mask, scorer=None):
     return test_binary_probs(probs, data, mask, scorer)
 
 
-if __name__ == '__main__':
-    main()
+def check_regression_output(preds):
+    assert preds.shape[-1] == 1 or preds.dim() == 1
+    assert torch.isfinite(preds).all()  # no NaN/Inf
+    return preds
+
+
+def test_regression_GNN_outputs(out_, data, mask, scorer=None):
+    # For testing use mask = data.test_mask
+    # For validation use mask = data.val_mask
+
+    check_regression_output(out_)
+
+    if scorer is not None:
+        _score = scorer(data.y[mask].detach().cpu().numpy(), out_[mask].detach().cpu().numpy())
+    else:
+        # To use brier_score_loss:
+        _score = mean_absolute_error(
+            data.y[mask].detach().cpu().numpy(),
+            out_[mask].detach().cpu().numpy()
+        )
+    return _score
