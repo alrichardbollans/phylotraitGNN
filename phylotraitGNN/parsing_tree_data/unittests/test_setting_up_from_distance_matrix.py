@@ -7,6 +7,7 @@ import pandas as pd
 import torch
 import torch_geometric
 from matplotlib import pyplot as plt
+from torch_geometric.data import DataLoader
 
 from phylotraitGNN.parsing_tree_data.set_up_data import DistanceMatrixDataset
 
@@ -207,7 +208,21 @@ class TestDistanceMatrixDataset(unittest.TestCase):
         expected_names = np.array(["Node2"])
         assert np.array_equal(val_node_names, expected_names)
 
-    def test_dataset_initialization(self):
+    def test_knearest(self):
+        dataset = DistanceMatrixDataset(
+            tree_distance_csv_path='../unittest_data/binary/tree_distances.csv',
+            feature_csv_path_with_missing_target='../unittest_data/binary/mcar_values.csv',
+            ground_truth_csv_path='../unittest_data/binary/ground_truth.csv',
+            target_name='trait_BM_trend_scaled',
+            binary_or_continuous='binary',
+            k_nearest=10
+        )
+
+        g = torch_geometric.utils.to_networkx(dataset[0], to_undirected=True)
+        nx.draw(g)
+        plt.show()
+
+    def test_dataset_initialization_proper_data(self):
         dataset = DistanceMatrixDataset(
             tree_distance_csv_path='../unittest_data/binary/tree_distances.csv',
             feature_csv_path_with_missing_target='../unittest_data/binary/mcar_values.csv',
@@ -224,5 +239,29 @@ class TestDistanceMatrixDataset(unittest.TestCase):
         g = torch_geometric.utils.to_networkx(dataset[0], to_undirected=True)
         nx.draw(g)
         plt.show()
+
+        import numpy as np
+        from scipy.sparse.csgraph import minimum_spanning_tree
+
+        D = dataset.dist_matrix  # dense, symmetric, shape [N, N]
+        mst = minimum_spanning_tree(D)
+        min_threshold = mst.data.max()  # smallest cutoff that keeps the graph connected
+        print(min_threshold)
+
+        dataset1 = DistanceMatrixDataset(
+            tree_distance_csv_path='../unittest_data/binary/tree_distances.csv',
+            feature_csv_path_with_missing_target='../unittest_data/binary/mcar_values.csv',
+            ground_truth_csv_path='../unittest_data/binary/ground_truth.csv',
+            target_name='trait_BM_trend_scaled',
+            binary_or_continuous='binary',
+            threshold=dataset.dist_matrix.max()/2
+        )
+
+        g = torch_geometric.utils.to_networkx(dataset1[0], to_undirected=True)
+        nx.draw(g)
+        plt.show()
+        print(f"Number of edges: {dataset.data.edge_index.shape[1]}")
+        print(f"Number of edges: {dataset1.data.edge_index.shape[1]}")
+        assert dataset1.data.edge_index.shape[1]<dataset.data.edge_index.shape[1]
 if __name__ == "__main__":
     unittest.main()

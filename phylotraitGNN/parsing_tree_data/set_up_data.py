@@ -12,6 +12,8 @@ from sklearn.impute import SimpleImputer
 
 
 class GenericPhyloDataset(Dataset):
+    self_loop_fill_value = 1
+
     def __init__(self, feature_csv_path_with_missing_target: str,
                  target_name: str,
                  binary_or_continuous: str,
@@ -59,6 +61,7 @@ class GenericPhyloDataset(Dataset):
 
         self.sigma = sigma
         self.add_self_loops = add_self_loops
+        self.self_loop_fill_value = 1
         self.validation_nodes = validation_nodes
 
         if self.validation_nodes is not None:
@@ -116,8 +119,8 @@ class GenericPhyloDataset(Dataset):
             data.x = torch.from_numpy(x_imputed).type_as(data.x)  # Convert back to tensor
 
         if add_self_loops:
-            assert data.edge_weight.max() <= 1
-            data = AddSelfLoops(fill_value=1)(data)
+            assert data.edge_weight.max() <= GenericPhyloDataset.self_loop_fill_value
+            data = AddSelfLoops(fill_value=GenericPhyloDataset.self_loop_fill_value)(data)
 
         data = ToUndirected(reduce='mean')(data)
 
@@ -208,7 +211,7 @@ class GenericPhyloDataset(Dataset):
         X = X_feature_df.loc[self.node_names].values  # Align with node names
 
         if self.ground_truth_df is None:
-            y_df[self.target_name] = y_df[self.target_name].fillna(avg_training_value)
+            y_df.loc[:, self.target_name] = y_df[self.target_name].fillna(avg_training_value)
         y = y_df.loc[self.node_names][self.target_name].values  # Align with node names
 
         y_with_missing_target_df = y_with_missing_target_df.loc[self.node_names]  # Align with node names
@@ -319,7 +322,7 @@ class DistanceMatrixDataset(GenericPhyloDataset):
         if self.threshold is not None:
             # Create edges for distances below threshold
             rows, cols = np.where(self.dist_matrix <= self.threshold)
-            edge_index = torch.tensor([rows, cols], dtype=torch.long)
+            edge_index = torch.tensor(np.array([rows, cols]), dtype=torch.long)
             edge_attr = torch.tensor(self.dist_matrix[rows, cols], dtype=torch.float).view(-1, 1)
 
         elif self.k_nearest is not None:
@@ -349,7 +352,7 @@ class DistanceMatrixDataset(GenericPhyloDataset):
             # Add both directions for undirected graph
             rows_bidir = np.concatenate([rows, cols])
             cols_bidir = np.concatenate([cols, rows])
-            edge_index = torch.tensor([rows_bidir, cols_bidir], dtype=torch.long)
+            edge_index = torch.tensor(np.array([rows_bidir, cols_bidir]), dtype=torch.long)
             edge_attr = torch.tensor(
                 np.concatenate([self.dist_matrix[rows, cols],
                                 self.dist_matrix[rows, cols]]),

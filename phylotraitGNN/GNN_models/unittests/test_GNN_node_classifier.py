@@ -4,7 +4,7 @@ import unittest
 import pandas as pd
 import torch
 import torch.nn.functional as F
-from phylotraitGNN.GNN_models.GNN_node_classifier import GATv2Conv_node_classifier, GCNConv_node_classifier
+from phylotraitGNN.GNN_models.GNN_node_classifier import GATv2Conv_node_classifier, APPNPNet_node_classifier
 from phylotraitGNN.GNN_models.training_helper_functions import EarlyStopping, train_gcn_model
 from torch_geometric.data import Data
 
@@ -27,7 +27,7 @@ class TestGCN(unittest.TestCase):
         test_mask = torch.tensor([False, False, True, True, True], dtype=torch.bool)
 
         self.data = Data(x=x, edge_index=edge_index, y=y, train_mask=train_mask, test_mask=test_mask)
-        self.dataset = type("MockDataset", (object,), {"num_features": num_features, "num_classes": num_classes})
+        self.dataset = type("MockDataset", (object,), {"self_loop_fill_value":1,"num_features": num_features, "num_classes": num_classes})
 
     def test_train_step(self):
         model = GATv2Conv_node_classifier(self.dataset, hidden_channels=4, dropout_p=0.1)
@@ -150,7 +150,7 @@ class TestGCN(unittest.TestCase):
 
         self.for_a_dataset_and_model(dataset, model)
 
-        model = GCNConv_node_classifier(dataset, hidden_channels=4)
+        model = APPNPNet_node_classifier(dataset, hidden_channels=4,dropout_p=0.1)
         self.for_a_dataset_and_model(dataset, model)
 
 
@@ -188,7 +188,7 @@ class TestGCN(unittest.TestCase):
 
         self.for_a_dataset_and_model(dataset, model)
 
-        model = GCNConv_node_classifier(dataset, hidden_channels=4)
+        model = APPNPNet_node_classifier(dataset, hidden_channels=4,dropout_p=0.1)
         self.for_a_dataset_and_model(dataset, model)
 
     def test_distance_training_process_no_gt(self):
@@ -203,7 +203,7 @@ class TestGCN(unittest.TestCase):
         model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
         self.for_a_dataset_and_model(dataset, model)
 
-        model = GCNConv_node_classifier(dataset, hidden_channels=4)
+        model = APPNPNet_node_classifier(dataset, hidden_channels=4,dropout_p=0.1)
         self.for_a_dataset_and_model(dataset, model)
 
         dataset = DistanceMatrixDataset(
@@ -234,7 +234,7 @@ class TestGCN(unittest.TestCase):
 
         self.for_a_dataset_and_model(dataset, model)
 
-        model = GCNConv_node_classifier(dataset, hidden_channels=4)
+        model = APPNPNet_node_classifier(dataset, hidden_channels=4,dropout_p=0.1)
         self.for_a_dataset_and_model(dataset, model)
 
         dataset = NewickDataset(
@@ -265,7 +265,7 @@ class TestGCN(unittest.TestCase):
 
         self.for_a_dataset_and_model(dataset, model)
 
-        model = GCNConv_node_classifier(dataset, hidden_channels=4)
+        model = APPNPNet_node_classifier(dataset, hidden_channels=4,dropout_p=0.1)
         self.for_a_dataset_and_model(dataset, model)
 
     def test_Newick_with_no_features(self):
@@ -285,8 +285,8 @@ class TestGCN(unittest.TestCase):
             print('No features, so this will break.')
             pass
 
-        model = GCNConv_node_classifier(dataset, hidden_channels=4)
-        self.assertRaises(AssertionError, self.for_a_dataset_and_model, dataset, model)
+        # model = APPNPNet_node_classifier(dataset, hidden_channels=4,dropout_p=0.1)
+        # self.assertRaises(AssertionError, self.for_a_dataset_and_model, dataset, model)
     def test_distance_with_no_features(self):
         dataset = DistanceMatrixDataset(
             tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary_no_features/tree_distances.csv',

@@ -1,9 +1,10 @@
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import GATv2Conv, GCNConv
+import torch_geometric
+from torch_geometric.nn import GATv2Conv, GCNConv, APPNP
 
 from phylotraitGNN.GNN_models import test_binary_GNN_outputs
-from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset
+from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset
 
 
 class MyGNNModels(torch.nn.Module):
@@ -27,19 +28,34 @@ class MyGNNModels(torch.nn.Module):
 
 
 class GATv2Conv_node_classifier(MyGNNModels):
-    def __init__(self, dataset, hidden_channels, dropout_p):
+
+    # This only passes messages twice, so best for the distance matrix case.
+
+    def __init__(self, dataset: DistanceMatrixDataset, hidden_channels, dropout_p):
         super().__init__()
         # Shaked Brody et al., ‘How Attentive Are Graph Attention Networks?’,
         # arXiv:2105.14491, preprint, arXiv, 31 January 2022, https://doi.org/10.48550/arXiv.2105.14491.
         # Note this adds self loops by default, the attention function applied to neighbours then includes the current node.
-        self.conv1 = GATv2Conv(dataset.num_features, hidden_channels, edge_dim=1, dropout=dropout_p)
-        self.conv2 = GATv2Conv(hidden_channels, dataset.num_classes, edge_dim=1)
+        # Here, the self loop weight is set to the maximum value of the edge weights.
+        conv1 = GATv2Conv(dataset.num_features, hidden_channels, edge_dim=1, dropout=dropout_p, fill_value=dataset.self_loop_fill_value)
+
+        conv2 = GATv2Conv(hidden_channels, dataset.num_classes, edge_dim=1, fill_value=dataset.self_loop_fill_value)
+
+        self.layers = torch.nn.ModuleList([conv1, conv2])
 
     def forward(self, x, edge_index, edge_attr):
-        x = self.conv1(x, edge_index, edge_attr=edge_attr)
-        x = x.relu()
-        x = self.conv2(x, edge_index,
-                       edge_attr=edge_attr)  # There typically isn't a separate, fully-connected (linear) layer after the last GNN layer, because the final convolution is trained to map embeddings directly to class logits
+
+        for l in self.layers:
+            # For graph layers, we need to add the "edge_index" tensor as additional input
+            # All PyTorch Geometric graph layer inherit the class "MessagePassing", hence
+            # we can simply check the class type.
+            if isinstance(l, torch_geometric.nn.MessagePassing):
+                x = l(x, edge_index,
+                      edge_attr=edge_attr)
+                x.relu()
+            else:
+                raise ValueError(f"Unknown layer type: {type(l)}")
+
         return x
 
     def test(self, data):
@@ -50,19 +66,26 @@ class GATv2Conv_node_classifier(MyGNNModels):
         return test_acc, b_score
 
 
-class GCNConv_node_classifier(MyGNNModels):
-    def __init__(self, dataset, hidden_channels):
-        super().__init__()
-        # The graph convolutional operator from the “Semi-supervised Classification with Graph Convolutional Networks” paper.
-        # Note this adds self loops by default, the attention function applied to neighbours then includes the current node.
-        self.conv1 = GCNConv(dataset.num_features, hidden_channels)
-        self.conv2 = GCNConv(hidden_channels, dataset.num_classes)
+class APPNPNet_node_classifier(MyGNNModels):
+    # https://arxiv.org/abs/1810.05997
 
-    def forward(self, x, edge_index, edge_weight):
-        x = self.conv1(x, edge_index, edge_weight=edge_weight)
-        x = x.relu()
-        x = self.conv2(x, edge_index,
-                       edge_weight=edge_weight)  # There typically isn't a separate, fully-connected (linear) layer after the last GNN layer, because the final convolution is trained to map embeddings directly to class logits
+    # Advantage of this is that it can propogate messages far in the network, which could be handy in the Newick case.
+
+    def __init__(self, dataset: NewickDataset, hidden_channels, dropout_p, K=10, alpha=0.1, edge_dropout_p=0.0):
+        super().__init__()
+        self.lin1 = torch.nn.Linear(dataset.num_features, hidden_channels)
+        self.lin2 = torch.nn.Linear(hidden_channels, dataset.num_classes)
+        self.prop = APPNP(K=K, alpha=alpha, dropout=edge_dropout_p)
+        self.dropout_p = dropout_p
+
+    def forward(self, x, edge_index, edge_weight=None):
+        # Predictions are first generated from each node’s own features by a neural network and
+        # then propagated using an adaptation of personalized PageRank
+        x = F.dropout(x, p=self.dropout_p, training=self.training)
+        x = F.relu(self.lin1(x))
+        x = F.dropout(x, p=self.dropout_p, training=self.training)
+        x = self.lin2(x)  # predict
+        x = self.prop(x, edge_index, edge_weight)  # then propagate
         return x
 
     def test(self, data):
