@@ -254,7 +254,7 @@ class GenericPhyloDataset(Dataset):
     def get_model_prediction_outputs_in_feature_order(self, predictions) -> pd.DataFrame:
         # Predictions are output in order of self.node_names, which contains nodes not in feature data and not in same order
         # This function outputs a dataframe with the same order as the feature dataframe.
-        prediction_df = pd.DataFrame(predictions.detach().cpu().numpy(), index=pd.Series(self.node_names, name='accepted_species'))
+        prediction_df = pd.DataFrame(predictions.detach().cpu().numpy(), index=pd.Series(self.node_names, name=self.index_name))
         out_df = prediction_df.loc[self.feature_with_missing_target_df.index]
         return out_df
 

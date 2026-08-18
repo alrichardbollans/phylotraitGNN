@@ -1,48 +1,41 @@
 import torch
+import torch_geometric
 from matplotlib import pyplot as plt
 from sklearn.manifold import TSNE
+from sklearn.metrics import mean_absolute_error
 from torch_geometric.nn import GATv2Conv
-
-from phylotraitGNN.GNN_models import train_gcn_model, EarlyStopping, test_regression_GNN_outputs
-from phylotraitGNN.parsing_tree_data import NewickDataset
+import torch.nn.functional as F
 
 
-class GATv2Conv_node_regressor(torch.nn.Module):
-    def __init__(self, dataset, hidden_channels, dropout_p):
+from phylotraitGNN.GNN_models import train_gcn_model, EarlyStopping, test_regression_GNN_outputs, MyGNNModels
+from phylotraitGNN.parsing_tree_data import NewickDataset, DistanceMatrixDataset
+
+
+class GATv2Conv_node_regressor(MyGNNModels):
+    def __init__(self, dataset: DistanceMatrixDataset, hidden_channels:int, dropout_p:float):
         super().__init__()
-        self.conv1 = GATv2Conv(dataset.num_features, hidden_channels, edge_dim=1, dropout=dropout_p)
-        self.conv2 = GATv2Conv(hidden_channels, 1, edge_dim=1)  # This seems weird, need to check this for regression.
-
+        self.conv1 = GATv2Conv(dataset.num_features, 2*hidden_channels, edge_dim=1, dropout=dropout_p, fill_value=dataset.self_loop_fill_value)
+        self.conv2 = GATv2Conv(2*hidden_channels, hidden_channels, edge_dim=1, dropout=dropout_p, fill_value=dataset.self_loop_fill_value)
+        self.lin1 = torch.nn.Linear(hidden_channels, 1)
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.to(device)
 
     def forward(self, x, edge_index, edge_attr):
-        x = self.conv1(x, edge_index, edge_attr=edge_attr)
-        x = x.relu()
+        x = self.conv1(x, edge_index,
+                      edge_attr=edge_attr)
+        x = F.relu(x)
         x = self.conv2(x, edge_index,
-                       edge_attr=edge_attr)
+                      edge_attr=edge_attr)
+        x = F.relu(x)
+        x = self.lin1(x)  # predict
+
         # x will have shape [num_nodes, 1], flattening:
         return x.squeeze(-1)  # [N, 1] -> [N]
 
-    def train_step(self, data, optimizer, loss_function):
-        self.train()
-        optimizer.zero_grad()  # Clear gradients.
-        out_ = self(data.x, data.edge_index, data.edge_weight)  # Perform a single forward pass.
-        train_loss_ = loss_function(out_[data.train_mask], data.y[data.train_mask])  # Compute the loss solely based on the training nodes.
-        train_loss_.backward()  # Derive gradients.
-        optimizer.step()  # Update parameters based on gradients.
-
-        if hasattr(data, 'val_mask'):
-            self.eval()
-            val_loss_ = loss_function(out_[data.val_mask], data.y[data.val_mask])
-        else:
-            val_loss_ = None
-        return train_loss_, val_loss_
-
-    def test(self, data):
+    def test(self, data, scorer: callable):
         self.eval()
         out_ = self(data.x, data.edge_index, edge_attr=data.edge_weight)
-        _score = test_regression_GNN_outputs(out_, data, data.test_mask)
+        _score = test_regression_GNN_outputs(out_, data, data.test_mask, scorer)
 
         return _score
 
@@ -80,13 +73,13 @@ def main():
 
     model = GATv2Conv_node_regressor(dataset, hidden_channels=16, dropout_p=0.1)
     print(model)
-    loss_function = torch.nn.MSELoss()
+    loss_function = torch.nn.L1Loss()
     optimizer = torch.optim.Adam(model.parameters())
 
     early_stopping = EarlyStopping(patience=5, delta=0.01)
     train_gcn_model(model, dataset.data, loss_function, optimizer, epochs=100, early_stopping=early_stopping, plot_loss=True, )
     # Check training has changed scores
-    mae = model.test(dataset.data)
+    mae = model.test(dataset.data, mean_absolute_error)
 
 
 if __name__ == '__main__':

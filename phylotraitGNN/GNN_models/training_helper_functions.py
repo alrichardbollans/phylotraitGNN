@@ -1,6 +1,3 @@
-import torch
-
-
 class EarlyStopping:
     # Modified from: https://www.geeksforgeeks.org/deep-learning/how-to-handle-overfitting-in-pytorch-models-using-early-stopping/
     def __init__(self, patience=5, delta=0, epoch_minimum=10):
