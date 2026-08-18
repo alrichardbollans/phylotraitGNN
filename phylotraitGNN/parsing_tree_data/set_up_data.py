@@ -373,6 +373,8 @@ class DistanceMatrixDataset(GenericPhyloDataset):
             original_edge_std=original_edge_std,
         )
         data = self.transform_data(data, add_self_loops=self.add_self_loops)
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        data.to(device)
 
         return data
 
@@ -447,9 +449,10 @@ class NewickDataset(GenericPhyloDataset):
         return G
 
     def _process(self):
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
         edge_length = torch.tensor([self.networkx_tree[u][v]['length'] for u, v in self.networkx_tree.edges()]).view(-1, 1)
         edge_weight, original_edge_std = GenericPhyloDataset.get_edge_weights(edge_length, self.sigma)
-
         pyg_data = from_networkx(self.networkx_tree)
         X, y, train_mask, val_mask, test_mask, y_dtype = self.get_features_and_masks()
 
@@ -465,7 +468,7 @@ class NewickDataset(GenericPhyloDataset):
         )
 
         data = self.transform_data(data, add_self_loops=self.add_self_loops)
-
+        data.to(device)
         return data
 
 

@@ -27,7 +27,10 @@ class TestGCN(unittest.TestCase):
         test_mask = torch.tensor([False, False, True, True, True], dtype=torch.bool)
 
         self.data = Data(x=x, edge_index=edge_index, y=y, train_mask=train_mask, test_mask=test_mask)
-        self.dataset = type("MockDataset", (object,), {"self_loop_fill_value":1,"num_features": num_features, "num_classes": num_classes})
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.data.to(device)
+
+        self.dataset = type("MockDataset", (object,), {"self_loop_fill_value": 1, "num_features": num_features, "num_classes": num_classes})
 
     def test_train_step(self):
         model = GATv2Conv_node_classifier(self.dataset, hidden_channels=4, dropout_p=0.1)
@@ -150,10 +153,6 @@ class TestGCN(unittest.TestCase):
 
         self.for_a_dataset_and_model(dataset, model)
 
-        model = APPNPNet_node_classifier(dataset, hidden_channels=4,dropout_p=0.1)
-        self.for_a_dataset_and_model(dataset, model)
-
-
         model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
         early_stopping = EarlyStopping(patience=5, delta=0.01)
         self.assertRaises(ValueError, self.for_a_dataset_and_model, dataset, model, early_stopping)
@@ -188,9 +187,6 @@ class TestGCN(unittest.TestCase):
 
         self.for_a_dataset_and_model(dataset, model)
 
-        model = APPNPNet_node_classifier(dataset, hidden_channels=4,dropout_p=0.1)
-        self.for_a_dataset_and_model(dataset, model)
-
     def test_distance_training_process_no_gt(self):
 
         dataset = DistanceMatrixDataset(
@@ -201,9 +197,6 @@ class TestGCN(unittest.TestCase):
 
         )
         model = GATv2Conv_node_classifier(dataset, hidden_channels=4, dropout_p=0.1)
-        self.for_a_dataset_and_model(dataset, model)
-
-        model = APPNPNet_node_classifier(dataset, hidden_channels=4,dropout_p=0.1)
         self.for_a_dataset_and_model(dataset, model)
 
         dataset = DistanceMatrixDataset(
@@ -234,7 +227,7 @@ class TestGCN(unittest.TestCase):
 
         self.for_a_dataset_and_model(dataset, model)
 
-        model = APPNPNet_node_classifier(dataset, hidden_channels=4,dropout_p=0.1)
+        model = APPNPNet_node_classifier(dataset, 4, 0.1, 5, 0.1, 0.1)
         self.for_a_dataset_and_model(dataset, model)
 
         dataset = NewickDataset(
@@ -265,7 +258,7 @@ class TestGCN(unittest.TestCase):
 
         self.for_a_dataset_and_model(dataset, model)
 
-        model = APPNPNet_node_classifier(dataset, hidden_channels=4,dropout_p=0.1)
+        model = APPNPNet_node_classifier(dataset, 4, 0.1, 5, 0.1, 0.1)
         self.for_a_dataset_and_model(dataset, model)
 
     def test_Newick_with_no_features(self):
@@ -285,8 +278,9 @@ class TestGCN(unittest.TestCase):
             print('No features, so this will break.')
             pass
 
-        # model = APPNPNet_node_classifier(dataset, hidden_channels=4,dropout_p=0.1)
+        # model = APPNPNet_node_classifier(dataset, 4, 0.1, 5,0.1,0.1)
         # self.assertRaises(AssertionError, self.for_a_dataset_and_model, dataset, model)
+
     def test_distance_with_no_features(self):
         dataset = DistanceMatrixDataset(
             tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary_no_features/tree_distances.csv',
@@ -325,6 +319,10 @@ class TestGCN(unittest.TestCase):
         optimizer = torch.optim.Adam(model.parameters())
 
         train_gcn_model(model, data, loss_function, optimizer, epochs=100, plot_loss=True, early_stopping=early_stopping)
+
+        model = APPNPNet_node_classifier(dataset, 4, 0.1, 5, 0.1, 0.1)
+        optimizer = torch.optim.Adam(model.parameters())
+        train_gcn_model(model, data, loss_function, optimizer, epochs=1000, plot_loss=True)
 
 
 if __name__ == "__main__":

@@ -40,6 +40,20 @@ class TestNewickDataset(unittest.TestCase):
         self.assertIsInstance(dataset.data.y, torch.Tensor)
         self.assertIs(dataset.data.y.dtype, torch.int64)
 
+        if torch.cuda.is_available():
+            print(f"Number of GPUs: {torch.cuda.device_count()}")
+            print(f"Current GPU name: {torch.cuda.get_device_name(0)}")
+            print(f"CUDA version: {torch.version.cuda}")
+            print("GPU compute capability:", torch.cuda.get_device_capability(0))  # e.g., (6, 1) for Pascal
+            print("PyTorch compiled for:", torch.cuda.get_arch_list())  # e.g., ['sm_75', 'sm_80']
+
+            self.assertTrue(dataset.data.x.device == torch.device("cuda:0"))
+            self.assertTrue(dataset.data.y.device == torch.device("cuda:0"))
+            self.assertTrue(dataset.data.edge_weight.device == torch.device("cuda:0"))
+            self.assertTrue(dataset.data.edge_index.device == torch.device("cuda:0"))
+        else:
+            print("CUDA is not available. PyG will run on CPU.")
+
         g = torch_geometric.utils.to_networkx(dataset[0], to_undirected=True)
         nx.draw(g)
         plt.show()

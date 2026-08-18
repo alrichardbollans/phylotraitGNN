@@ -42,7 +42,8 @@ class GATv2Conv_node_classifier(MyGNNModels):
         conv2 = GATv2Conv(hidden_channels, dataset.num_classes, edge_dim=1, fill_value=dataset.self_loop_fill_value)
 
         self.layers = torch.nn.ModuleList([conv1, conv2])
-
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.to(device)
     def forward(self, x, edge_index, edge_attr):
 
         for l in self.layers:
@@ -69,15 +70,17 @@ class GATv2Conv_node_classifier(MyGNNModels):
 class APPNPNet_node_classifier(MyGNNModels):
     # https://arxiv.org/abs/1810.05997
 
-    # Advantage of this is that it can propogate messages far in the network, which could be handy in the Newick case.
+    # Advantage of this is that it can propagate messages far in the network, which could be handy in the Newick case.
 
-    def __init__(self, dataset: NewickDataset, hidden_channels, dropout_p, K=10, alpha=0.1, edge_dropout_p=0.0):
+    def __init__(self, dataset: NewickDataset, hidden_channels, dropout_p: float, K: int, alpha: float, edge_dropout_p: float):
         super().__init__()
         self.lin1 = torch.nn.Linear(dataset.num_features, hidden_channels)
         self.lin2 = torch.nn.Linear(hidden_channels, dataset.num_classes)
         self.prop = APPNP(K=K, alpha=alpha, dropout=edge_dropout_p)
         self.dropout_p = dropout_p
 
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.to(device)
     def forward(self, x, edge_index, edge_weight=None):
         # Predictions are first generated from each node’s own features by a neural network and
         # then propagated using an adaptation of personalized PageRank

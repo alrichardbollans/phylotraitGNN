@@ -13,6 +13,9 @@ class GATv2Conv_node_regressor(torch.nn.Module):
         self.conv1 = GATv2Conv(dataset.num_features, hidden_channels, edge_dim=1, dropout=dropout_p)
         self.conv2 = GATv2Conv(hidden_channels, 1, edge_dim=1)  # This seems weird, need to check this for regression.
 
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.to(device)
+
     def forward(self, x, edge_index, edge_attr):
         x = self.conv1(x, edge_index, edge_attr=edge_attr)
         x = x.relu()
