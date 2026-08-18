@@ -33,27 +33,35 @@ class GATv2Conv_node_classifier(MyGNNModels):
 
     # This only passes messages twice, so best for the distance matrix case.
 
-    def __init__(self, dataset: DistanceMatrixDataset, hidden_channels, dropout_p):
+    def __init__(self, dataset: DistanceMatrixDataset, hidden_channels, attention_dropout, dropout):
         super().__init__()
         # Shaked Brody et al., ‘How Attentive Are Graph Attention Networks?’,
         # arXiv:2105.14491, preprint, arXiv, 31 January 2022, https://doi.org/10.48550/arXiv.2105.14491.
         # Note this adds self loops by default, the attention function applied to neighbours then includes the current node.
         # Here, the self loop weight is set to the maximum value of the edge weights.
-        self.conv1 = GATv2Conv(dataset.num_features, hidden_channels, edge_dim=1, dropout=dropout_p, fill_value=dataset.self_loop_fill_value)
+        self.conv1 = GATv2Conv(dataset.num_features, 2*hidden_channels, edge_dim=1, dropout=attention_dropout, fill_value=dataset.self_loop_fill_value)
 
-        self.conv2 = GATv2Conv(hidden_channels, dataset.num_classes, edge_dim=1, dropout=dropout_p, fill_value=dataset.self_loop_fill_value)
-
+        self.conv2 = GATv2Conv(2*hidden_channels, hidden_channels, edge_dim=1, dropout=attention_dropout, fill_value=dataset.self_loop_fill_value)
+        self.lin1 = torch.nn.Linear(hidden_channels, dataset.num_classes) # separate the message-passing layers from the final classifier head
+        self.dropout_p = dropout
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.to(device)
 
     def forward(self, x, edge_index, edge_attr):
+        x = F.dropout(x, p=self.dropout_p, training=self.training)
         x = self.conv1(x, edge_index,
                        edge_attr=edge_attr)
         x = F.relu(x)
+        x = F.dropout(x, p=self.dropout_p, training=self.training)
         x = self.conv2(x, edge_index,
                        edge_attr=edge_attr)
+        x = F.relu(x)
+
+        x = F.dropout(x, p=self.dropout_p, training=self.training)
+        x = self.lin1(x)
 
         return x
+
     def test(self, data, scorer:callable):
         self.eval()
         with torch.no_grad():

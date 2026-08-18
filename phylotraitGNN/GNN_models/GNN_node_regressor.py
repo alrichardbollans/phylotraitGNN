@@ -6,27 +6,34 @@ from sklearn.metrics import mean_absolute_error
 from torch_geometric.nn import GATv2Conv
 import torch.nn.functional as F
 
-
 from phylotraitGNN.GNN_models import train_gcn_model, EarlyStopping, test_regression_GNN_outputs, MyGNNModels
 from phylotraitGNN.parsing_tree_data import NewickDataset, DistanceMatrixDataset
 
 
 class GATv2Conv_node_regressor(MyGNNModels):
-    def __init__(self, dataset: DistanceMatrixDataset, hidden_channels:int, dropout_p:float):
+    def __init__(self, dataset: DistanceMatrixDataset, hidden_channels: int, attention_dropout, dropout):
         super().__init__()
-        self.conv1 = GATv2Conv(dataset.num_features, 2*hidden_channels, edge_dim=1, dropout=dropout_p, fill_value=dataset.self_loop_fill_value)
-        self.conv2 = GATv2Conv(2*hidden_channels, hidden_channels, edge_dim=1, dropout=dropout_p, fill_value=dataset.self_loop_fill_value)
-        self.lin1 = torch.nn.Linear(hidden_channels, 1) # Plain linear layer for regression.
+        self.conv1 = GATv2Conv(dataset.num_features, 2 * hidden_channels, edge_dim=1, dropout=attention_dropout,
+                               fill_value=dataset.self_loop_fill_value)
+        self.conv2 = GATv2Conv(2 * hidden_channels, hidden_channels, edge_dim=1, dropout=attention_dropout, fill_value=dataset.self_loop_fill_value)
+        self.lin1 = torch.nn.Linear(hidden_channels, 1)  # separate the message-passing layers from the final classifier head
+        self.dropout_p = dropout
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.to(device)
 
     def forward(self, x, edge_index, edge_attr):
+        x = F.dropout(x, p=self.dropout_p, training=self.training)
         x = self.conv1(x, edge_index,
-                      edge_attr=edge_attr)
+                       edge_attr=edge_attr)
         x = F.relu(x)
+        x = F.dropout(x, p=self.dropout_p, training=self.training)
+
         x = self.conv2(x, edge_index,
-                      edge_attr=edge_attr)
+                       edge_attr=edge_attr)
+
         x = F.relu(x)
+
+        x = F.dropout(x, p=self.dropout_p, training=self.training)
         x = self.lin1(x)  # predict
 
         # x will have shape [num_nodes, 1], flattening:

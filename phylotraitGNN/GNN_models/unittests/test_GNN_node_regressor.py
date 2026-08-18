@@ -35,7 +35,7 @@ class TestGCN(unittest.TestCase):
         self.dataset = type("MockDataset", (object,), {"self_loop_fill_value": 1, "num_features": num_features, "num_classes": num_classes})
 
     def test_train_step(self):
-        model = GATv2Conv_node_regressor(self.dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_regressor(self.dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
         loss_function = torch.nn.MSELoss()
 
@@ -44,7 +44,7 @@ class TestGCN(unittest.TestCase):
         self.assertGreaterEqual(train_loss.item(), 0.0)
 
     def test_test_method(self):
-        model = GATv2Conv_node_regressor(self.dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_regressor(self.dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         with torch.no_grad():
             brier_score = model.test(self.data, mean_absolute_error)
@@ -138,11 +138,11 @@ class TestGCN(unittest.TestCase):
 
         )
         assert dataset.num_features == 2
-        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
 
-        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
         early_stopping = EarlyStopping(patience=5, delta=0.01)
         self.assertRaises(ValueError, self.for_a_dataset_and_model, dataset, model, early_stopping)
 
@@ -155,10 +155,10 @@ class TestGCN(unittest.TestCase):
             k_nearest=50, validation_nodes=['t24', 't14', 't27']
 
         )
-        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
-        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
         early_stopping = EarlyStopping(patience=20, delta=0.01)
         self.for_a_dataset_and_model(dataset, model, early_stopping)
 
@@ -172,7 +172,7 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='continuous'
 
         )
-        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
 
@@ -185,7 +185,7 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='continuous'
 
         )
-        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
         self.for_a_dataset_and_model(dataset, model)
 
         dataset = DistanceMatrixDataset(
@@ -195,10 +195,10 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='continuous', validation_nodes=['t24', 't14', 't27']
 
         )
-        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
-        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
         early_stopping = EarlyStopping(patience=5, delta=0.01)
         self.for_a_dataset_and_model(dataset, model, early_stopping)
 
@@ -212,7 +212,7 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='continuous'
 
         )
-        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
 
@@ -225,10 +225,10 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='continuous', validation_nodes=['t24', 't14', 't27']
 
         )
-        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
-        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
         early_stopping = EarlyStopping(patience=5, delta=0.01)
         self.for_a_dataset_and_model(dataset, model, early_stopping)
 
@@ -241,7 +241,7 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='continuous'
 
         )
-        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
 
@@ -255,7 +255,7 @@ class TestGCN(unittest.TestCase):
 
         )
 
-        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
         try:
             self.for_a_dataset_and_model(dataset, model)
         except AssertionError:
@@ -275,7 +275,7 @@ class TestGCN(unittest.TestCase):
 
         )
 
-        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, dropout_p=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         try:
             self.for_a_dataset_and_model(dataset, model)
@@ -293,12 +293,12 @@ class TestGCN(unittest.TestCase):
 
         )
         data = dataset.data
-        model_without_early_stopping = GATv2Conv_node_regressor(dataset, hidden_channels=2, dropout_p=0.1)
+        model_without_early_stopping = GATv2Conv_node_regressor(dataset, hidden_channels=2, attention_dropout=0.1, dropout=0.1)
         loss_function = torch.nn.L1Loss()
         optimizer = torch.optim.Adam(model_without_early_stopping.parameters())
         train_gcn_model(model_without_early_stopping, data, loss_function, optimizer, epochs=1000, plot_loss=True)
 
-        model = GATv2Conv_node_regressor(dataset, hidden_channels=2, dropout_p=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=2, attention_dropout=0.1, dropout=0.1)
         early_stopping = EarlyStopping(patience=10, delta=0.01)
         optimizer = torch.optim.Adam(model.parameters())
 

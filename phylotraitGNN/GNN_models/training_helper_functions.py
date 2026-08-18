@@ -36,7 +36,7 @@ def train_gcn_model(model, data, loss_function, optimizer, epochs, plot_loss=Fal
 
     train_losses = []
     val_losses = []
-    for epoch in range(1, epochs):
+    for epoch in range(1, epochs+1):
         train_loss, val_loss = model.train_step(data, optimizer, loss_function)
         train_losses.append(train_loss.detach().cpu().numpy())
         if val_loss is not None:
