@@ -16,7 +16,7 @@ class GATv2Conv_node_regressor(MyGNNModels):
         super().__init__()
         self.conv1 = GATv2Conv(dataset.num_features, 2*hidden_channels, edge_dim=1, dropout=dropout_p, fill_value=dataset.self_loop_fill_value)
         self.conv2 = GATv2Conv(2*hidden_channels, hidden_channels, edge_dim=1, dropout=dropout_p, fill_value=dataset.self_loop_fill_value)
-        self.lin1 = torch.nn.Linear(hidden_channels, 1)
+        self.lin1 = torch.nn.Linear(hidden_channels, 1) # Plain linear layer for regression.
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.to(device)
 
@@ -34,8 +34,9 @@ class GATv2Conv_node_regressor(MyGNNModels):
 
     def test(self, data, scorer: callable):
         self.eval()
-        out_ = self(data.x, data.edge_index, edge_attr=data.edge_weight)
-        _score = test_regression_GNN_outputs(out_, data, data.test_mask, scorer)
+        with torch.no_grad():
+            out_ = self(data.x, data.edge_index, edge_attr=data.edge_weight)
+            _score = test_regression_GNN_outputs(out_, data, data.test_mask, scorer)
 
         return _score
 
