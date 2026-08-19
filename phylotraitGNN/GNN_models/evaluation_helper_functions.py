@@ -20,8 +20,8 @@ def test_binary_probs(probs, data, mask, scorer):
     # pred = probs.argmax(dim=1)  # Use the class with highest probability.
     # test_correct = pred == data.y[mask]  # Check against ground-truth labels.
     # test_acc = int(test_correct.sum()) / int(mask.sum())  # Derive ratio of correct predictions.
-
-    b_score = scorer(data.y[mask].detach().cpu().numpy(), pred_proba.detach().cpu().numpy())
+    y_true = data.y[mask].detach().cpu().numpy()
+    b_score = scorer(y_true, pred_proba.detach().cpu().numpy())
 
     return b_score
 

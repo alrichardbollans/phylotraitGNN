@@ -186,7 +186,8 @@ class TestGCN(unittest.TestCase):
 
         )
         model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
-        self.for_a_dataset_and_model(dataset, model)
+        self.assertRaises(ValueError, model.test, dataset.data, mean_absolute_error)
+
 
         dataset = DistanceMatrixDataset(
             tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary/tree_distances.csv',
@@ -197,10 +198,7 @@ class TestGCN(unittest.TestCase):
         )
         model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
-        self.for_a_dataset_and_model(dataset, model)
-        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
-        early_stopping = EarlyStopping(patience=5, delta=0.01)
-        self.for_a_dataset_and_model(dataset, model, early_stopping)
+        self.assertRaises(ValueError, model.test, dataset.data, mean_absolute_error)
 
     def test_newick_training_process(self):
 
@@ -242,8 +240,8 @@ class TestGCN(unittest.TestCase):
 
         )
         model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        self.assertRaises(ValueError, model.test, dataset.data, mean_absolute_error)
 
-        self.for_a_dataset_and_model(dataset, model)
 
     def test_Newick_with_no_features(self):
         dataset = NewickDataset(

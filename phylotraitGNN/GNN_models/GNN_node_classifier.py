@@ -1,7 +1,7 @@
+import numpy as np
 import torch
-import torch_geometric
-from torch_geometric.nn import GATv2Conv
 import torch.nn.functional as F
+from torch_geometric.nn import GATv2Conv
 
 from phylotraitGNN.GNN_models import test_binary_GNN_outputs
 from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset
@@ -39,10 +39,11 @@ class GATv2Conv_node_classifier(MyGNNModels):
         # arXiv:2105.14491, preprint, arXiv, 31 January 2022, https://doi.org/10.48550/arXiv.2105.14491.
         # Note this adds self loops by default, the attention function applied to neighbours then includes the current node.
         # Here, the self loop weight is set to the maximum value of the edge weights.
-        self.conv1 = GATv2Conv(dataset.num_features, 2*hidden_channels, edge_dim=1, dropout=attention_dropout, fill_value=dataset.self_loop_fill_value)
+        self.conv1 = GATv2Conv(dataset.num_features, hidden_channels, edge_dim=1, dropout=attention_dropout,
+                               fill_value=dataset.self_loop_fill_value)
 
-        self.conv2 = GATv2Conv(2*hidden_channels, hidden_channels, edge_dim=1, dropout=attention_dropout, fill_value=dataset.self_loop_fill_value)
-        self.lin1 = torch.nn.Linear(hidden_channels, dataset.num_classes) # separate the message-passing layers from the final classifier head
+        # As in original papers, the final GAT layer's attention mechanism produces the class-dimensional output directly
+        self.conv2 = GATv2Conv(hidden_channels, dataset.num_classes, edge_dim=1, dropout=attention_dropout, fill_value=dataset.self_loop_fill_value)
         self.dropout_p = dropout
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.to(device)
@@ -55,21 +56,21 @@ class GATv2Conv_node_classifier(MyGNNModels):
         x = F.dropout(x, p=self.dropout_p, training=self.training)
         x = self.conv2(x, edge_index,
                        edge_attr=edge_attr)
-        x = F.relu(x)
-
-        x = F.dropout(x, p=self.dropout_p, training=self.training)
-        x = self.lin1(x)
 
         return x
 
-    def test(self, data, scorer:callable):
+    def test(self, data, scorer: callable):
         self.eval()
         with torch.no_grad():
             out_ = self(data.x, data.edge_index, edge_attr=data.edge_weight)
+
+            y_true = data.y[data.test_mask]
+            nan_value = torch.tensor(np.array([np.nan]), dtype=torch.int64).numpy()[0]
+            if nan_value in y_true:
+                raise ValueError("NaN values in ground truth labels are not allowed when testing")
             b_score = test_binary_GNN_outputs(out_, data, data.test_mask, scorer)
 
         return b_score
-
 
 
 class APPNPNet_node_classifier(MyGNNModels):
@@ -89,6 +90,7 @@ class APPNPNet_node_classifier(MyGNNModels):
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.to(device)
+
     def forward(self, x, edge_index, edge_weight=None):
         # Predictions are first generated from each node’s own features by a neural network and
         # then propagated using an adaptation of personalized PageRank
@@ -98,8 +100,6 @@ class APPNPNet_node_classifier(MyGNNModels):
         x = self.lin2(x)  # predict
         x = self.prop(x, edge_index, edge_weight)  # then propagate
         return x
-
-
 
 
 def main():

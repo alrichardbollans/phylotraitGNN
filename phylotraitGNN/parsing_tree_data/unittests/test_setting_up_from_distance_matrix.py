@@ -130,11 +130,11 @@ class TestDistanceMatrixDataset(unittest.TestCase):
         self.assertEqual(data.node_stores[0]['x'][0, 1], 8)
         self.assertEqual(data.node_stores[0]['x'][2, 0], 2)
         self.assertEqual(data.node_stores[0]['x'][2, 1], 4)
-
-        self.assertEqual(data.node_stores[0]['y'][0], 0)
         nan_value = torch.tensor(np.array([np.nan]), dtype=torch.int64).numpy()[0]
+
+        self.assertEqual(data.node_stores[0]['y'][0], nan_value)
         self.assertEqual(data.node_stores[0]['y'][1], 0)
-        self.assertEqual(data.node_stores[0]['y'][2], 0)
+        self.assertEqual(data.node_stores[0]['y'][2], nan_value)
 
     def test_invalid_binary_or_continuous(self):
         with self.assertRaises(ValueError):

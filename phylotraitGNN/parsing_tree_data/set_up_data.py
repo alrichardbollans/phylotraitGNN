@@ -18,7 +18,8 @@ class GenericPhyloDataset(Dataset):
                  target_name: str,
                  binary_or_continuous: str,
                  ground_truth_csv_path: str = None,
-                 sigma: float = None, transform: Optional[Callable] = None, add_self_loops: bool = False, validation_nodes: Optional[list] = None):
+                 sigma: float = None, transform: Optional[Callable] = None, add_self_loops: bool = False, validation_nodes: Optional[list] = None,
+                 fill_missing_target_values_with_avg_training_value: bool = False):
         """
         Initializes an instance that manages a dataset with potential missing target values and ground truth data
         (optional). It supports handling both binary or continuous target variables. Additional functionalities
@@ -41,6 +42,9 @@ class GenericPhyloDataset(Dataset):
             add_self_loops (bool): A boolean flag indicating whether self-loops should be added in graph-based analysis.
             validation_nodes (list, optional): A list of nodes (or indices) designated for validating the model's
                 predictions or procedures.
+
+            fill_missing_target_values_with_avg_training_value (Optional[list]): Whether to fill missing target values with the average training value. Default is False.
+            This is only useful for label propagation. Where y values are ints, torch doesn't handle nan values. This shouldnt be an issue as long as masks are used appropriately.
         """
         self.binary_or_continuous = binary_or_continuous
 
@@ -58,7 +62,7 @@ class GenericPhyloDataset(Dataset):
             self.ground_truth_df = pd.read_csv(ground_truth_csv_path, index_col=0)
         else:
             self.ground_truth_df = None
-
+        self.fill_missing_target_values_with_avg_training_value = fill_missing_target_values_with_avg_training_value
         self.sigma = sigma
         self.add_self_loops = add_self_loops
         self.self_loop_fill_value = 1
@@ -141,6 +145,8 @@ class GenericPhyloDataset(Dataset):
                                           self.feature_with_missing_target_df.dropna(subset=[self.target_name]), check_dtype=False)
         if self.binary_or_continuous == 'binary':
             assert self.num_classes <= 2
+            assert self.data.y.dtype == torch.long
+            assert len(set(self.data.y.unique().tolist())) <=3
         else:
             # check that data.y are floats
             assert self.data.y.dtype == torch.float
@@ -210,7 +216,7 @@ class GenericPhyloDataset(Dataset):
         # Both X and y are sorted by self.node_names which provides the order for thre resulting predictions.
         X = X_feature_df.loc[self.node_names].values  # Align with node names
 
-        if self.ground_truth_df is None:
+        if self.ground_truth_df is None and self.fill_missing_target_values_with_avg_training_value:
             y_df.loc[:, self.target_name] = y_df[self.target_name].fillna(avg_training_value)
         y = y_df.loc[self.node_names][self.target_name].values  # Align with node names
 
@@ -270,7 +276,8 @@ class DistanceMatrixDataset(GenericPhyloDataset):
                  threshold: Optional[float] = None,
                  k_nearest: Optional[int] = None,
                  ground_truth_csv_path: str = None,
-                 sigma: float = None, add_self_loops: bool = False, validation_nodes: Optional[list] = None):
+                 sigma: float = None, add_self_loops: bool = False, validation_nodes: Optional[list] = None,
+                 fill_missing_target_values_with_avg_training_value: bool = False):
         """
         Initializes the instance by setting attributes and reading required CSV files, while validating the
         combination of parameters. Implements the base class initialization and processes required data.
@@ -308,7 +315,8 @@ class DistanceMatrixDataset(GenericPhyloDataset):
                          target_name,
                          binary_or_continuous,
                          ground_truth_csv_path=ground_truth_csv_path,
-                         sigma=sigma, add_self_loops=add_self_loops, validation_nodes=validation_nodes)
+                         sigma=sigma, add_self_loops=add_self_loops, validation_nodes=validation_nodes,
+                         fill_missing_target_values_with_avg_training_value=fill_missing_target_values_with_avg_training_value)
 
         # Load the data
         self.data = self._process()
@@ -388,7 +396,8 @@ class NewickDataset(GenericPhyloDataset):
                  target_name: str,
                  binary_or_continuous: str,
                  ground_truth_csv_path: str = None,
-                 sigma: float = None, add_self_loops: bool = False, validation_nodes: Optional[list] = None):
+                 sigma: float = None, add_self_loops: bool = False, validation_nodes: Optional[list] = None,
+                 fill_missing_target_values_with_avg_training_value:bool = False):
         """
         Initializes an instance and validates the input data and tree structure.
 
@@ -425,7 +434,8 @@ class NewickDataset(GenericPhyloDataset):
                          target_name,
                          binary_or_continuous,
                          ground_truth_csv_path=ground_truth_csv_path,
-                         sigma=sigma, add_self_loops=add_self_loops, validation_nodes=validation_nodes)
+                         sigma=sigma, add_self_loops=add_self_loops, validation_nodes=validation_nodes,
+                         fill_missing_target_values_with_avg_training_value=fill_missing_target_values_with_avg_training_value)
 
         # Load the data
         self.data = self._process()

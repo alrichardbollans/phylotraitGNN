@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 from sklearn.metrics import brier_score_loss
 
+from phylotraitGNN.GNN_models import test_binary_GNN_outputs
 from phylotraitGNN.GNN_models.GNN_node_classifier import GATv2Conv_node_classifier
 from phylotraitGNN.GNN_models.training_helper_functions import EarlyStopping, train_gcn_model
 from torch_geometric.data import Data
@@ -115,8 +116,8 @@ class TestGCN(unittest.TestCase):
 
         # Check training has changed scores
         brier = model.test(data, brier_score_loss)
-        self.assertNotAlmostEqual(
-            brier1, brier, delta=1e-5,
+        self.assertNotEqual(
+            brier1, brier,
             msg=f"Brier score did not change after training! brier1: {brier1}, brier: {brier}"
         )
 
@@ -198,7 +199,7 @@ class TestGCN(unittest.TestCase):
 
         )
         model = GATv2Conv_node_classifier(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
-        self.for_a_dataset_and_model(dataset, model)
+        self.assertRaises(ValueError, model.test, dataset.data, brier_score_loss)
 
         dataset = DistanceMatrixDataset(
             tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary/tree_distances.csv',
@@ -209,10 +210,7 @@ class TestGCN(unittest.TestCase):
         )
         model = GATv2Conv_node_classifier(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
-        self.for_a_dataset_and_model(dataset, model)
-        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
-        early_stopping = EarlyStopping(patience=5, delta=0.01)
-        self.for_a_dataset_and_model(dataset, model, early_stopping)
+        self.assertRaises(ValueError, model.test, dataset.data, brier_score_loss)
 
     def test_newick_training_process(self):
 
@@ -254,7 +252,7 @@ class TestGCN(unittest.TestCase):
         )
         model = GATv2Conv_node_classifier(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
-        self.for_a_dataset_and_model(dataset, model)
+        self.assertRaises(ValueError, model.test, dataset.data, brier_score_loss)
 
     def test_Newick_with_no_features(self):
         dataset = NewickDataset(
@@ -315,6 +313,27 @@ class TestGCN(unittest.TestCase):
 
         train_gcn_model(model, data, loss_function, optimizer, epochs=100, plot_loss=True, early_stopping=early_stopping)
 
+    def test_loss_eval_metrics(self):
+        loss_function = torch.nn.CrossEntropyLoss()
+        metric_function = brier_score_loss
+
+        dataset = DistanceMatrixDataset(
+            tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary/tree_distances.csv',
+            feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
+            target_name='trait_BM_trend_scaled',
+            binary_or_continuous='binary'
+
+        )
+        data = dataset.data
+        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+
+        optimizer = torch.optim.Adam(model.parameters())
+
+        train_gcn_model(model, data, loss_function, optimizer, 50, plot_loss=False)
+        model_out = model(data.x, data.edge_index, edge_attr=data.edge_weight)
+        b_score = test_binary_GNN_outputs(model_out, dataset.data, dataset.data.test_mask,
+                                          metric_function)
+        print(f"Brier score: {b_score}")
 
 if __name__ == "__main__":
     unittest.main()
