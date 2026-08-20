@@ -14,7 +14,8 @@ setup(
         'torch-geometric',
         'biopython',
         'networkx',
-        'bayesian-optimization==3.2.0'
+        'bayesian-optimization==3.2.0',
+        'matplotlib'
     ],
     # *strongly* suggested for sharing
     version='1.0',

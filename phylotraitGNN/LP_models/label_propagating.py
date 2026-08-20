@@ -58,6 +58,8 @@ def normalize_outputs_for_testing(out_):
 
 
 def propagate_labels(dataset: GenericPhyloDataset, num_layers=3, alpha=0.9):
+    raise NotImplementedError("This function is deprecated. Use the LabelPropagation class from torch_geometric instead.")
+
     """
     Propagates labels in a dataset using label propagation.
 
