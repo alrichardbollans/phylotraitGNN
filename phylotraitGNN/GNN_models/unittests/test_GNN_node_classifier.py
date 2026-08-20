@@ -31,12 +31,13 @@ class TestGCN(unittest.TestCase):
 
         self.data = Data(x=x, edge_index=edge_index, y=y, train_mask=train_mask, test_mask=test_mask)
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        print(f"Using device: {device}")
         self.data.to(device)
 
         self.dataset = type("MockDataset", (object,), {"self_loop_fill_value": 1, "num_features": num_features, "num_classes": num_classes})
 
     def test_train_step(self):
-        model = GATv2Conv_node_classifier(self.dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_classifier(self.dataset, 2,hidden_channels=4, attention_dropout=0.1, dropout=0.1)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
         loss_function = F.cross_entropy
 
@@ -45,7 +46,7 @@ class TestGCN(unittest.TestCase):
         self.assertGreaterEqual(train_loss.item(), 0.0)
 
     def test_test_method(self):
-        model = GATv2Conv_node_classifier(self.dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_classifier(self.dataset,2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         with torch.no_grad():
             brier_score = model.test(self.data, brier_score_loss)
@@ -151,11 +152,11 @@ class TestGCN(unittest.TestCase):
 
         )
         assert dataset.num_features == 2
-        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
 
-        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
         early_stopping = EarlyStopping(patience=5, delta=0.01)
         self.assertRaises(ValueError, self.for_a_dataset_and_model, dataset, model, early_stopping)
 
@@ -168,10 +169,10 @@ class TestGCN(unittest.TestCase):
             k_nearest=50, validation_nodes=['t24', 't14', 't27']
 
         )
-        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
-        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
         early_stopping = EarlyStopping(patience=20, delta=0.01)
         self.for_a_dataset_and_model(dataset, model, early_stopping)
 
@@ -185,7 +186,7 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary'
 
         )
-        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
 
@@ -198,7 +199,7 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary'
 
         )
-        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
         self.assertRaises(ValueError, model.test, dataset.data, brier_score_loss)
 
         dataset = DistanceMatrixDataset(
@@ -208,7 +209,7 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary', validation_nodes=['t24', 't14', 't27']
 
         )
-        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         self.assertRaises(ValueError, model.test, dataset.data, brier_score_loss)
 
@@ -222,7 +223,7 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary'
 
         )
-        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
 
@@ -234,10 +235,10 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary', validation_nodes=['t24', 't14', 't27']
 
         )
-        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
-        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
         early_stopping = EarlyStopping(patience=5, delta=0.01)
         self.for_a_dataset_and_model(dataset, model, early_stopping)
 
@@ -250,7 +251,7 @@ class TestGCN(unittest.TestCase):
             binary_or_continuous='binary'
 
         )
-        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         self.assertRaises(ValueError, model.test, dataset.data, brier_score_loss)
 
@@ -264,7 +265,7 @@ class TestGCN(unittest.TestCase):
 
         )
 
-        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
         try:
             self.for_a_dataset_and_model(dataset, model)
         except AssertionError:
@@ -284,7 +285,7 @@ class TestGCN(unittest.TestCase):
 
         )
 
-        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         try:
             self.for_a_dataset_and_model(dataset, model)
@@ -302,12 +303,12 @@ class TestGCN(unittest.TestCase):
 
         )
         data = dataset.data
-        model_without_early_stopping = GATv2Conv_node_classifier(dataset, hidden_channels=2, attention_dropout=0.1, dropout=0.1)
+        model_without_early_stopping = GATv2Conv_node_classifier(dataset, 2, hidden_channels=2, attention_dropout=0.1, dropout=0.1)
         loss_function = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.Adam(model_without_early_stopping.parameters())
         train_gcn_model(model_without_early_stopping, data, loss_function, optimizer, epochs=1000, plot_loss=True)
 
-        model = GATv2Conv_node_classifier(dataset, hidden_channels=2, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=2, attention_dropout=0.1, dropout=0.1)
         early_stopping = EarlyStopping(patience=10, delta=0.01)
         optimizer = torch.optim.Adam(model.parameters())
 
@@ -325,7 +326,7 @@ class TestGCN(unittest.TestCase):
 
         )
         data = dataset.data
-        model = GATv2Conv_node_classifier(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         optimizer = torch.optim.Adam(model.parameters())
 
@@ -334,6 +335,24 @@ class TestGCN(unittest.TestCase):
         b_score = test_binary_GNN_outputs(model_out, dataset.data, dataset.data.test_mask,
                                           metric_function)
         print(f"Brier score: {b_score}")
+    def test_number_classes(self):
 
+        dataset = DistanceMatrixDataset(
+            tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary/tree_distances.csv',
+            feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
+            ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary/ground_truth.csv',
+            target_name='trait_BM_trend_scaled',
+            binary_or_continuous='binary'
+
+        )
+        loss_function = torch.nn.CrossEntropyLoss()
+
+        data= dataset.data
+        model = GATv2Conv_node_classifier(dataset,1, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        optimizer = torch.optim.Adam(model.parameters())
+
+        self.assertRaises(RuntimeError,train_gcn_model, model, data, loss_function, optimizer, 50)
+
+        self.assertRaises(RuntimeError, GATv2Conv_node_classifier, dataset, 3,4,0.1,0.1)
 if __name__ == "__main__":
     unittest.main()

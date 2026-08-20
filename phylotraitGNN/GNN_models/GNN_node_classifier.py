@@ -33,7 +33,7 @@ class GATv2Conv_node_classifier(MyGNNModels):
 
     # This only passes messages twice, so best for the distance matrix case.
 
-    def __init__(self, dataset: DistanceMatrixDataset, hidden_channels, attention_dropout, dropout):
+    def __init__(self, dataset: DistanceMatrixDataset, num_classes: int, hidden_channels, attention_dropout, dropout):
         super().__init__()
         # Shaked Brody et al., ‘How Attentive Are Graph Attention Networks?’,
         # arXiv:2105.14491, preprint, arXiv, 31 January 2022, https://doi.org/10.48550/arXiv.2105.14491.
@@ -43,7 +43,7 @@ class GATv2Conv_node_classifier(MyGNNModels):
                                fill_value=dataset.self_loop_fill_value)
 
         # As in original papers, the final GAT layer's attention mechanism produces the class-dimensional output directly
-        self.conv2 = GATv2Conv(hidden_channels, dataset.num_classes, edge_dim=1, dropout=attention_dropout, fill_value=dataset.self_loop_fill_value)
+        self.conv2 = GATv2Conv(hidden_channels, num_classes, edge_dim=1, dropout=attention_dropout, fill_value=dataset.self_loop_fill_value)
         self.dropout_p = dropout
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.to(device)
