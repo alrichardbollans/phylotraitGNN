@@ -3,8 +3,8 @@ from copy import deepcopy
 import numpy as np
 import torch
 
-from phylotraitGNN.LP_models import propagate_labels, test_binary_LP_outputs
-from phylotraitGNN.parsing_tree_data import GenericPhyloDataset, NewickDataset
+from phyloGNNy.LP_models import propagate_labels, test_binary_LP_outputs
+from phyloGNNy.parsing_tree_data import GenericPhyloDataset, NewickDataset
 
 from bayes_opt import BayesianOptimization
 

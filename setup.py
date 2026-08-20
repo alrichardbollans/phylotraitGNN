@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='phylotraitGNN',
+    name='phyloGNNy',
     description='A package for running GNNs on phylogenetic trees',
     license='Attribution-NonCommercial-ShareAlike 4.0 International',
     packages=find_packages(),

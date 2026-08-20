@@ -6,8 +6,8 @@ from sklearn.manifold import TSNE
 from sklearn.metrics import mean_absolute_error
 from torch_geometric.nn import GATv2Conv
 
-from phylotraitGNN.GNN_models import train_gcn_model, EarlyStopping, test_regression_GNN_outputs, MyGNNModels
-from phylotraitGNN.parsing_tree_data import NewickDataset, DistanceMatrixDataset
+from phyloGNNy.GNN_models import train_gcn_model, EarlyStopping, test_regression_GNN_outputs, MyGNNModels
+from phyloGNNy.parsing_tree_data import NewickDataset, DistanceMatrixDataset
 
 
 class GATv2Conv_node_regressor(MyGNNModels):

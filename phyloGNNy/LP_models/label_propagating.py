@@ -2,8 +2,8 @@ import torch
 from torch_geometric.nn import LabelPropagation
 from torch_geometric.transforms import AddSelfLoops, ToUndirected
 
-from phylotraitGNN.LP_models import test_binary_LP_outputs
-from phylotraitGNN.parsing_tree_data import GenericPhyloDataset, DistanceMatrixDataset
+from phyloGNNy.LP_models import test_binary_LP_outputs
+from phyloGNNy.parsing_tree_data import GenericPhyloDataset, DistanceMatrixDataset
 
 
 def my_post_step(out, mask, y_ohe):

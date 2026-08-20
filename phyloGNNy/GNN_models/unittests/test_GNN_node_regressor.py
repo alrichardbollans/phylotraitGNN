@@ -4,14 +4,13 @@ import unittest
 import pandas as pd
 import torch
 import torch.nn.functional as F
-from sklearn.metrics import brier_score_loss
+from sklearn.metrics import mean_absolute_error
 
-from phylotraitGNN.GNN_models import test_binary_GNN_outputs
-from phylotraitGNN.GNN_models.GNN_node_classifier import GATv2Conv_node_classifier
-from phylotraitGNN.GNN_models.training_helper_functions import EarlyStopping, train_gcn_model
+from phyloGNNy.GNN_models.GNN_node_regressor import GATv2Conv_node_regressor
+from phyloGNNy.GNN_models.training_helper_functions import EarlyStopping, train_gcn_model
 from torch_geometric.data import Data
 
-from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset
+from phyloGNNy.parsing_tree_data import DistanceMatrixDataset, NewickDataset
 
 
 class TestGCN(unittest.TestCase):
@@ -23,7 +22,7 @@ class TestGCN(unittest.TestCase):
         edge_index = torch.tensor([[0, 1, 2, 3, 4, 0],
                                    [1, 2, 3, 4, 0, 3]], dtype=torch.long)
         x = torch.rand((num_nodes, num_features))  # Random feature matrix
-        y = torch.tensor([0, 1, 1, 0, 1], dtype=torch.long)  # Mock labels
+        y = torch.tensor([0, 0.11, 0.21, 11, 1], dtype=torch.float)  # Mock labels
 
         # Mock masks for training and testing
         train_mask = torch.tensor([True, True, False, False, False], dtype=torch.bool)
@@ -31,25 +30,24 @@ class TestGCN(unittest.TestCase):
 
         self.data = Data(x=x, edge_index=edge_index, y=y, train_mask=train_mask, test_mask=test_mask)
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        print(f"Using device: {device}")
         self.data.to(device)
 
         self.dataset = type("MockDataset", (object,), {"self_loop_fill_value": 1, "num_features": num_features, "num_classes": num_classes})
 
     def test_train_step(self):
-        model = GATv2Conv_node_classifier(self.dataset, 2,hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_regressor(self.dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-        loss_function = F.cross_entropy
+        loss_function = torch.nn.MSELoss()
 
         train_loss, val_lass = model.train_step(self.data, optimizer, loss_function)
         self.assertIsInstance(train_loss.item(), float)
         self.assertGreaterEqual(train_loss.item(), 0.0)
 
     def test_test_method(self):
-        model = GATv2Conv_node_classifier(self.dataset,2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_regressor(self.dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         with torch.no_grad():
-            brier_score = model.test(self.data, brier_score_loss)
+            brier_score = model.test(self.data, mean_absolute_error)
 
         self.assertIsInstance(brier_score, float)
         self.assertGreaterEqual(brier_score, 0.0)
@@ -57,43 +55,33 @@ class TestGCN(unittest.TestCase):
     def for_model_outputs(self, out_, dataset):
         data = dataset.data
 
-        # check that predictions are logits, not already softmaxed
-        assert not (out_.sum(dim=1) == 1).all()
-
         # First check that the outputs have multiple different values.
-        test_outs = set([round(c, 5) for c in set(out_[data.test_mask].detach().cpu().numpy()[:, 1])])
+        test_outs = set([round(c, 5) for c in set(out_[data.test_mask].detach().cpu().numpy())])
         self.assertGreaterEqual(len(test_outs), 2)
 
-        train_outs = set([round(c, 5) for c in set(out_[data.train_mask].detach().cpu().numpy()[:, 1])])
+        train_outs = set([round(c, 5) for c in set(out_[data.train_mask].detach().cpu().numpy())])
         self.assertGreaterEqual(len(train_outs), 2)
 
-        self.assertEqual(out_.shape, (data.x.shape[0], dataset.num_classes))
-
-        probs = F.softmax(out_, dim=1)  # Convert logits to probabilities.
-        # Add assertion that values in probs >0 and <1
-        self.assertTrue(torch.all(probs >= 0.0) and torch.all(probs <= 1.0))
-
-        # Add assertion that rows in pred proba add up to 1
-        self.assertAlmostEqual(probs.sum(dim=1).max().item(), 1.0, places=6)
+        self.assertEqual(out_.shape, torch.Size([len(data.y)]))
 
         # Check test outputs not leaked
-        test_outs = out_[data.test_mask][:, 1]
+        test_outs = out_[data.test_mask]
         test_ins = dataset.data.y[dataset.data.test_mask]
         assert torch.any(torch.not_equal(test_outs, test_ins))
 
         if hasattr(dataset.data, 'val_mask'):
-            val_outs = out_[data.val_mask][:, 1]
+            val_outs = out_[data.val_mask]
             val_ins = dataset.data.y[dataset.data.val_mask]
             assert torch.any(torch.not_equal(val_outs, val_ins))
 
         # Check the function getting the dataframe
-        predictions = dataset.get_model_prediction_outputs_in_feature_order(probs)
+        predictions = dataset.get_model_prediction_outputs_in_feature_order(out_)
         pd.testing.assert_index_equal(predictions.index, dataset.feature_with_missing_target_df.index)
 
         if dataset.ground_truth_df is not None:
             # Test data isn't leaked
             test_data = dataset.ground_truth_df[dataset.feature_with_missing_target_df[dataset.target_name].isna()][[dataset.target_name]]
-            testing_predictions_like_df = predictions[[1]].rename(columns={1: dataset.target_name})[[dataset.target_name]]
+            testing_predictions_like_df = predictions[[0]].rename(columns={0: dataset.target_name})[[dataset.target_name]]
             testing_predictions_like_df = testing_predictions_like_df[testing_predictions_like_df.index.isin(test_data.index)]
             testing_predictions_like_df[dataset.target_name] = testing_predictions_like_df[dataset.target_name].astype(float)
             test_data[dataset.target_name] = test_data[dataset.target_name].astype(float)
@@ -108,19 +96,17 @@ class TestGCN(unittest.TestCase):
     def for_a_dataset_and_model(self, dataset, model, early_stopping=None):
 
         data = dataset.data
-        brier1 = model.test(data, brier_score_loss)
+        mse1 = model.test(data, mean_absolute_error)
 
-        loss_function = torch.nn.CrossEntropyLoss()
+        loss_function = torch.nn.MSELoss()
         optimizer = torch.optim.Adam(model.parameters())
 
         train_gcn_model(model, data, loss_function, optimizer, epochs=100, early_stopping=early_stopping)
 
         # Check training has changed scores
-        brier = model.test(data, brier_score_loss)
-        self.assertNotEqual(
-            brier1, brier,
-            msg=f"Brier score did not change after training! brier1: {brier1}, brier: {brier}"
-        )
+        mse = model.test(data, mean_absolute_error)
+        # self.assertNotEqual(test_acc_1, test_acc_)
+        self.assertNotEqual(mse1, mse)
 
         # Check it's not just outputting the same values
         try:
@@ -147,16 +133,16 @@ class TestGCN(unittest.TestCase):
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
             ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary/ground_truth.csv',
             target_name='trait_BM_trend_scaled',
-            binary_or_continuous='binary',
+            binary_or_continuous='continuous',
             k_nearest=50
 
         )
         assert dataset.num_features == 2
-        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
 
-        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
         early_stopping = EarlyStopping(patience=5, delta=0.01)
         self.assertRaises(ValueError, self.for_a_dataset_and_model, dataset, model, early_stopping)
 
@@ -165,14 +151,14 @@ class TestGCN(unittest.TestCase):
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
             ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary/ground_truth.csv',
             target_name='trait_BM_trend_scaled',
-            binary_or_continuous='binary',
+            binary_or_continuous='continuous',
             k_nearest=50, validation_nodes=['t24', 't14', 't27']
 
         )
-        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
-        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
         early_stopping = EarlyStopping(patience=20, delta=0.01)
         self.for_a_dataset_and_model(dataset, model, early_stopping)
 
@@ -183,10 +169,10 @@ class TestGCN(unittest.TestCase):
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
             ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary/ground_truth.csv',
             target_name='trait_BM_trend_scaled',
-            binary_or_continuous='binary'
+            binary_or_continuous='continuous'
 
         )
-        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
 
@@ -196,22 +182,23 @@ class TestGCN(unittest.TestCase):
             tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary/tree_distances.csv',
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
             target_name='trait_BM_trend_scaled',
-            binary_or_continuous='binary'
+            binary_or_continuous='continuous'
 
         )
-        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
-        self.assertRaises(ValueError, model.test, dataset.data, brier_score_loss)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        self.assertRaises(ValueError, model.test, dataset.data, mean_absolute_error)
+
 
         dataset = DistanceMatrixDataset(
             tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary/tree_distances.csv',
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
             target_name='trait_BM_trend_scaled',
-            binary_or_continuous='binary', validation_nodes=['t24', 't14', 't27']
+            binary_or_continuous='continuous', validation_nodes=['t24', 't14', 't27']
 
         )
-        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
-        self.assertRaises(ValueError, model.test, dataset.data, brier_score_loss)
+        self.assertRaises(ValueError, model.test, dataset.data, mean_absolute_error)
 
     def test_newick_training_process(self):
 
@@ -220,25 +207,26 @@ class TestGCN(unittest.TestCase):
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
             ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary/ground_truth.csv',
             target_name='trait_BM_trend_scaled',
-            binary_or_continuous='binary'
+            binary_or_continuous='continuous'
 
         )
-        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
+
 
         dataset = NewickDataset(
             newick_tree_path='../../parsing_tree_data/unittest_data/binary/tree.tre',
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
             ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary/ground_truth.csv',
             target_name='trait_BM_trend_scaled',
-            binary_or_continuous='binary', validation_nodes=['t24', 't14', 't27']
+            binary_or_continuous='continuous', validation_nodes=['t24', 't14', 't27']
 
         )
-        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         self.for_a_dataset_and_model(dataset, model)
-        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
         early_stopping = EarlyStopping(patience=5, delta=0.01)
         self.for_a_dataset_and_model(dataset, model, early_stopping)
 
@@ -248,12 +236,12 @@ class TestGCN(unittest.TestCase):
             newick_tree_path='../../parsing_tree_data/unittest_data/binary/tree.tre',
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
             target_name='trait_BM_trend_scaled',
-            binary_or_continuous='binary'
+            binary_or_continuous='continuous'
 
         )
-        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        self.assertRaises(ValueError, model.test, dataset.data, mean_absolute_error)
 
-        self.assertRaises(ValueError, model.test, dataset.data, brier_score_loss)
 
     def test_Newick_with_no_features(self):
         dataset = NewickDataset(
@@ -261,11 +249,11 @@ class TestGCN(unittest.TestCase):
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary_no_features/mcar_values.csv',
             ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary_no_features/ground_truth.csv',
             target_name='trait_ARD',
-            binary_or_continuous='binary',
+            binary_or_continuous='continuous',
 
         )
 
-        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
         try:
             self.for_a_dataset_and_model(dataset, model)
         except AssertionError:
@@ -281,11 +269,11 @@ class TestGCN(unittest.TestCase):
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary_no_features/mcar_values.csv',
             ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary_no_features/ground_truth.csv',
             target_name='trait_ARD',
-            binary_or_continuous='binary',
+            binary_or_continuous='continuous',
 
         )
 
-        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
 
         try:
             self.for_a_dataset_and_model(dataset, model)
@@ -299,60 +287,21 @@ class TestGCN(unittest.TestCase):
             feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
             ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary/ground_truth.csv',
             target_name='trait_BM_trend_scaled',
-            binary_or_continuous='binary', validation_nodes=['t24', 't14', 't27', 't36', 't94', 't3']
+            binary_or_continuous='continuous', validation_nodes=['t24', 't14', 't27', 't36', 't94', 't3']
 
         )
         data = dataset.data
-        model_without_early_stopping = GATv2Conv_node_classifier(dataset, 2, hidden_channels=2, attention_dropout=0.1, dropout=0.1)
-        loss_function = torch.nn.CrossEntropyLoss()
+        model_without_early_stopping = GATv2Conv_node_regressor(dataset, hidden_channels=2, attention_dropout=0.1, dropout=0.1)
+        loss_function = torch.nn.L1Loss()
         optimizer = torch.optim.Adam(model_without_early_stopping.parameters())
         train_gcn_model(model_without_early_stopping, data, loss_function, optimizer, epochs=1000, plot_loss=True)
 
-        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=2, attention_dropout=0.1, dropout=0.1)
+        model = GATv2Conv_node_regressor(dataset, hidden_channels=2, attention_dropout=0.1, dropout=0.1)
         early_stopping = EarlyStopping(patience=10, delta=0.01)
         optimizer = torch.optim.Adam(model.parameters())
 
         train_gcn_model(model, data, loss_function, optimizer, epochs=100, plot_loss=True, early_stopping=early_stopping)
 
-    def test_loss_eval_metrics(self):
-        loss_function = torch.nn.CrossEntropyLoss()
-        metric_function = brier_score_loss
 
-        dataset = DistanceMatrixDataset(
-            tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary/tree_distances.csv',
-            feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
-            target_name='trait_BM_trend_scaled',
-            binary_or_continuous='binary'
-
-        )
-        data = dataset.data
-        model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
-
-        optimizer = torch.optim.Adam(model.parameters())
-
-        train_gcn_model(model, data, loss_function, optimizer, 50, plot_loss=False)
-        model_out = model(data.x, data.edge_index, edge_attr=data.edge_weight)
-        b_score = test_binary_GNN_outputs(model_out, dataset.data, dataset.data.test_mask,
-                                          metric_function)
-        print(f"Brier score: {b_score}")
-    def test_number_classes(self):
-
-        dataset = DistanceMatrixDataset(
-            tree_distance_csv_path='../../parsing_tree_data/unittest_data/binary/tree_distances.csv',
-            feature_csv_path_with_missing_target='../../parsing_tree_data/unittest_data/binary/mcar_values.csv',
-            ground_truth_csv_path='../../parsing_tree_data/unittest_data/binary/ground_truth.csv',
-            target_name='trait_BM_trend_scaled',
-            binary_or_continuous='binary'
-
-        )
-        loss_function = torch.nn.CrossEntropyLoss()
-
-        data= dataset.data
-        model = GATv2Conv_node_classifier(dataset,1, hidden_channels=4, attention_dropout=0.1, dropout=0.1)
-        optimizer = torch.optim.Adam(model.parameters())
-
-        self.assertRaises(RuntimeError,train_gcn_model, model, data, loss_function, optimizer, 50)
-
-        self.assertRaises(RuntimeError, GATv2Conv_node_classifier, dataset, 3,4,0.1,0.1)
 if __name__ == "__main__":
     unittest.main()

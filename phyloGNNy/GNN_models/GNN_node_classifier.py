@@ -3,8 +3,8 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.nn import GATv2Conv
 
-from phylotraitGNN.GNN_models import test_binary_GNN_outputs
-from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset
+from phyloGNNy.GNN_models import test_binary_GNN_outputs
+from phyloGNNy.parsing_tree_data import DistanceMatrixDataset, NewickDataset
 
 
 class MyGNNModels(torch.nn.Module):

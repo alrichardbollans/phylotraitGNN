@@ -5,8 +5,8 @@ import pandas as pd
 from torch_geometric.data import Data
 from torch_geometric.nn import LabelPropagation
 
-from phylotraitGNN.LP_models import propagate_labels, test_binary_LP_outputs, my_post_step
-from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset, NewickDataset
+from phyloGNNy.LP_models import propagate_labels, test_binary_LP_outputs, my_post_step
+from phyloGNNy.parsing_tree_data import DistanceMatrixDataset, NewickDataset
 
 
 class TestGCN(unittest.TestCase):

@@ -3,8 +3,8 @@ import unittest
 import pandas as pd
 import torch
 
-from phylotraitGNN.LP_models import propagate_labels
-from phylotraitGNN.parsing_tree_data import NewickDataset
+from phyloGNNy.LP_models import propagate_labels
+from phyloGNNy.parsing_tree_data import NewickDataset
 
 
 class TestGCN(unittest.TestCase):

@@ -1,5 +1,3 @@
-from torch.nn import CrossEntropyLoss
-
 # Phylogenetic Graph Neural Networks for Trait Predictions
 
 These packages are currently under development.
@@ -24,7 +22,7 @@ write.csv(tree_distances, file = 'tree_distances.csv')
 ```
 
 ```python
-from phylotraitGNN.parsing_tree_data import DistanceMatrixDataset
+from phyloGNNy.parsing_tree_data import DistanceMatrixDataset
 
 dataset = DistanceMatrixDataset(
     tree_distance_csv_path='tree_distances.csv',
@@ -37,16 +35,16 @@ dataset = DistanceMatrixDataset(
 The feature csv file specifies file with a table containing predictor features and a target variable to predict, that may have missing values to
 predict
 The index of the feature table and the distance table should contain names of tree tips
-Examples of appropriate data can be found in: [binary examples](phylotraitGNN/parsing_tree_data/unittest_data/binary)
-and [continuous examples](phylotraitGNN/parsing_tree_data/unittest_data/continuous).
+Examples of appropriate data can be found in: [binary examples](phyloGNNy/parsing_tree_data/unittest_data/binary)
+and [continuous examples](phyloGNNy/parsing_tree_data/unittest_data/continuous).
 
 Now to train a model:
 
 ```python
 import torch
-from phylotraitGNN.GNN_models import GATv2Conv_node_classifier, train_gcn_model
+from phyloGNNy.GNN_models import GATv2Conv_node_classifier, train_gcn_model
 
-model = GATv2Conv_node_classifier(dataset,2, hidden_channels=4, attention_dropout=0.1,
+model = GATv2Conv_node_classifier(dataset, 2, hidden_channels=4, attention_dropout=0.1,
                                   dropout=0.1)
 
 loss_function = torch.nn.CrossEntropyLoss()  # specify appropriate loss function
@@ -62,7 +60,7 @@ To get model predictions:
 model_outputs = model(dataset.data.x, dataset.data.edge_index, edge_attr=dataset.data.edge_weight)
 
 # Model outputs are logits, if you want probabilities for class 1 (in the binary case):
-from phylotraitGNN.GNN_models import convert_logits_to_probs
+from phyloGNNy.GNN_models import convert_logits_to_probs
 
 probs = convert_logits_to_probs(model_outputs)
 

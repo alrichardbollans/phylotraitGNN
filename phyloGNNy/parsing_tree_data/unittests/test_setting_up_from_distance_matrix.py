@@ -9,7 +9,7 @@ import torch_geometric
 from matplotlib import pyplot as plt
 from torch_geometric.data import DataLoader
 
-from phylotraitGNN.parsing_tree_data.set_up_data import DistanceMatrixDataset
+from phyloGNNy.parsing_tree_data.set_up_data import DistanceMatrixDataset
 
 
 class TestDistanceMatrixDataset(unittest.TestCase):

@@ -8,7 +8,7 @@ import torch
 import torch_geometric
 from matplotlib import pyplot as plt
 
-from phylotraitGNN.parsing_tree_data.set_up_data import NewickDataset
+from phyloGNNy.parsing_tree_data.set_up_data import NewickDataset
 
 
 class TestNewickDataset(unittest.TestCase):
