@@ -8,7 +8,7 @@ This repository includes methods for reading phylogenetic tree data and applying
 
 With pip, run:
 
-`pip install git+https://github.com/alrichardbollans/phylotraitGNN.git`
+`pip install git+https://github.com/alrichardbollans/phyloGNNy.git`
 
 ## Example Usage
 
